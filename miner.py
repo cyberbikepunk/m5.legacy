@@ -1,85 +1,41 @@
-#!/usr/bin/python
-
-from requests import get
-from time import strptime, strftime, localtime
-from datetime import date
 import re
 import subprocess
+import requests
+from datetime import datetime
+
 
 class Miner:
+    """
+    The Miner class takes care of scraping the company server.
+    """
 
-    USERNAME = 'm-134'
-    PASSWORD = 'PASSWORD'
-    DEFAULT_DATE = '19.12.2014'
-    DATE_FORMAT = '%d.%m.%Y'
-    URL_BASE = 'http://bamboo-mec.de'
-    URL_SUFFIX = '/ll.php5'
-    USER_AGENT = 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:31.0) Gecko/20100101 Firefox/31.0'
+    def __init__(self, date, session):
+        self.date = date
+        self.session = session
+        self.date_string = date.strftime('%d.%m.%Y')
+        self.url = 'http://bamboo-mec.de/ll.php5?' \
+                   'status=delivered' \
+                   '&datum={}' \
+                   .format(self.date_string)
+        self.raw_html = ''
+        self.temp_file = self.date_string + '.html'
 
-    def __init__(self):
-        self.created = localtime()
-        self.date = None
-        self.user = None
-        self.saved = None
-        self.session = None
+    def browse(self):
+        subprocess.call(['firefox', self.temp_file])
 
-        print('Miner object created!')
-        self.show()
+    def download(self):
+        response = self.session.get(self.url)
+        f = open(self.temp_file, 'w')
+        self.raw_html = response.text
+        f.write(self.raw_html)
+        self.browse()
 
-    def pick_day(self):
-        self.date = strptime(self.DEFAULT_DATE, self.DATE_FORMAT)
-        self.formated_date = strftime(self.DATE_FORMAT, self.date)
+    def scrape(self):
+        pattern = 'uuid=(\d{7})'
+        jobs = re.search(pattern, self.raw_html)
+        if jobs:
+            self.process()
 
-        print('Picked a day!')
-        self.show()
+    def process(self):
+        pass
 
-    def show(self):
-        print('    MINER OBJECT')
-        print('    Created on:     ' + strftime(self.DATE_FORMAT, self.created))
-
-        if self.user:
-            print('    User:           ' + self.user['username'])
-
-        if self.date:
-            print('    Target day:     ' + self.formated_date)
-
-        if self.session:
-            print('    Target URL:     ' + self.logged.url)
-            print('    HTTP repsonse:  ' + str(self.logged.status_code))
-
-        if self.saved:
-            print('    Saved to file:  ' + self.saved)
-
-    def login(self):
-        self.session = Session()
-        self.session.headers.update({'user-agent': self.USER_AGENT})
-        self.logged = post(self.URL_BASE + self.URL_SUFFIX, self.user)
-
-        print('Logged in!')
-        self.show()
-
-    def save_to_file(self):
-        try:
-            self.filename = self.formated_date + '.html'
-            f = open(self.filename, 'w')
-            try:
-                f.write(self.logged.text)
-                self.saved = 'Saved to ' + self.filename
-                print('Saved html to file!')
-            finally:
-                f.close()
-        except IOError:
-            self.saved = 'ERROR'
-            print('Html not saved to file!')
-            pass
-
-        self.show()
-
-    def view_in_browser(self):
-        subprocess.call(['firefox', self.filename])
-
-    def scan_homepage(self):
-        fertig = re.search('(?P<Done>\d+) Fertig', self.logged.text)
-        fertig_dic = fertig.groupdict()
-        print(fertig_dic)
-        print(fertig_dic['Done'])

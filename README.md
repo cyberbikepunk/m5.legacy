@@ -1,11 +1,11 @@
-Project-x helps you become a better bike messenger!
+M5 helps me become a better bike messenger!
 
-This little program can be used by any freelancers working
-for Messenger. Just provide your username and password and
+This little program can in principle also be used by any of
+my colleagues. Just provide your username and password and
 the program will analyze the data that pertains to you
 on the company server. Have fun!
 
-!!! THIS CODE CAN BE DANGEROUS !!!
+!!! WARNING !!!
 
 As long as this program is used freely by the bike messenger
 themselves, everything is cool. As soon as it's used by the

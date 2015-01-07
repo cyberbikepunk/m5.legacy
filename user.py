@@ -6,7 +6,7 @@ from getpass import getpass
 from os.path import isfile
 from datetime import datetime
 
-from miner import *
+from miner import Miner
 
 
 class User:
@@ -21,9 +21,10 @@ class User:
         self.is_authenticated = False
         self.is_active = True
         self.session = None
-        self.miner = Miner()
+        self.miner = []
         self.data = []
         self.log = []
+        self.command = ''
 
     def credentials(self):
         """ Return the payload for the post request on the login page
@@ -65,7 +66,7 @@ class User:
             self.rec('Data file {} found! You are a returning user.', self.file())
             return True
         else:
-            self.rec('Welcome {}! You are a newbie.', self.file())
+            self.rec('Welcome {}! You are a newbie.', self.username)
             return False
 
     def save_data(self):
@@ -103,14 +104,43 @@ class User:
         """
         message = message.format(*args)
         timestamp = '{:%Y-%m-%d %H:%M:%S %fms}'.format(datetime.now())
-        with timestamp + ' | ' + message as entry:
-            self.log.append(entry)
-            print(entry)
+        entry = timestamp + ' | ' + message
+        self.log.append(entry)
+        print(entry)
 
     def disconnect(self):
         pass
 
-    def prompt(self):
-        command = input('Enter your command or type "help" or "quit":')
-        self.rec('User command: ' + command)
+    def prompt_date(self):
+        """
+        Prompt for a date in the format 'dd.mm.yyyy' or the word 'quit'. If the date
+        format cannot be read, prompt again!
+        """
+        input_string = input('Enter a date or type "quit":')
+        if input_string == 'quit':
+            self.clean_exit()
+        else:
+            try:
+                day = datetime.strptime(input_string, '%d.%m.%Y')
+            except ValueError:
+                print('Input format must be dd-mm-yy. Try again...')
+                self.prompt_date()
+            else:
+                self.mine_date(day)
 
+    def clean_exit(self):
+        """
+        Make a clean exit: save the current user data, log, and disconnect
+        from the company server!
+        """
+        self.save_data()
+        self.save_log()
+        self.disconnect()
+
+    def mine_date(self, day):
+        """
+        Launch the mining process
+        """
+        self.rec('Mining the following day: {}', day.strftime('%d.%m.%Y'))
+        self.miner.append(Miner(day, self.session))
+        self.miner[-1].download()
