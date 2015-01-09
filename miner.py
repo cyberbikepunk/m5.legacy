@@ -1,41 +1,78 @@
 import re
-import subprocess
-import requests
-from datetime import datetime
 
 
 class Miner:
     """
-    The Miner class takes care of scraping the company server.
+    The Miner class scrapes data off the company server.
     """
 
-    def __init__(self, date, session):
+    def __init__(self, date, session, server):
+        """
+        Initialize all class attributes.
+
+        :param date: (datetime obj) date to be mined
+        :param session: (request.session obj) current session
+        :param server: (str) server url
+        """
         self.date = date
-        self.session = session
-        self.date_string = date.strftime('%d.%m.%Y')
-        self.url = 'http://bamboo-mec.de/ll.php5?' \
-                   'status=delivered' \
-                   '&datum={}' \
-                   .format(self.date_string)
-        self.raw_html = ''
-        self.temp_file = self.date_string + '.html'
+        self._session = session
+        self._server = server
+        self.regex = ''
 
-    def browse(self):
-        subprocess.call(['firefox', self.temp_file])
+    def has_been_mined(self):
+        return False
 
-    def download(self):
-        response = self.session.get(self.url)
-        f = open(self.temp_file, 'w')
-        self.raw_html = response.text
-        f.write(self.raw_html)
-        self.browse()
+    def fetch_jobs(self):
+        """
+        Return all the jobs that the user has completed on a given day.
+        Each job has unique 'uuid' request parameter.
 
-    def scrape(self):
+        :return: (set) A set of 'uuid' strings
+        """
+        path = 'll.php5'
+        payload = {'status': 'delivered', 'datum': self.date.strftime('%d.%m.%Y')}
+        response = self._session.get(self._server+path, params=payload)
         pattern = 'uuid=(\d{7})'
-        jobs = re.search(pattern, self.raw_html)
-        if jobs:
-            self.process()
+        jobs = re.findall(pattern, response.text)
+        # The 'uuid' parameter appears twice for each
+        # job (i.e. there are two separate links) so
+        # let'S get rid of the duplicates.
+        return set(jobs)
 
-    def process(self):
+    def scrape_job(self, job):
+        """
+        Request the job's url and scrape as much information
+        as we can using the regex engine.
+
+        :param job: (str) the 'uuid' request parameter for that job
+        :return: (dict) field/value pairs
+        """
+        url = self._server + 'll_detail.php5'
+        payload = {'status': 'delivered', 'uuid': job}
+        response = self._session.get(url, params=payload)
+        return self._compiled_regex.match(response.text)
+
+    @property
+    def _compiled_regex(self):
+        """
+        Define the regex groups for the fields we're trying to scrape
+        and compile the regex pattern.
+
+        :return: (re.pattern obj)
+        """
+        fields = {'id': r'<h2>(?P<{}>\d{10})',
+                  'type': r'\|\s(?P<{}>\w*),',
+                  'stops': r'(?P<{}>Stadtstop)'}
+
+        groups = []
+        for name, pattern in fields.items():
+            groups.append(pattern.format(name))
+
+        regex = re.compile(' '.join(groups))
+        return regex
+
+    def package_job(self, data):
         pass
+
+
 

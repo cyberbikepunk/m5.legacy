@@ -1,22 +1,25 @@
 #!/usr/bin/python
 
+__author__ = 'Loic Jounot (loic@cyberpunk.bike)'
+
 import user
 
 
-u = user.User()
-
-# The general idea is to help the bike messenger log onto
+# The general idea is to help the bike messenger log on
 # the company server. Once that's done, we let him do what
-# he/she wants through a command prompt. The commands are
+# he wants through a command prompt. The commands are
 # kept really simple.
 
-while not u.is_authenticated:
-    u.authenticate()  # Test user credentials on the server
+u = user.User()
+u.authenticate()            # Login on the company server
 
-if u.is_returning():
-    u.load_data()  # Don't mine data twice: fetch existing data
+if u.is_returning():            # Don't mine data twice: fetch existing data
+    u.load_data()
 
-while u.is_active:
-    u.prompt_date()  # Prompt the user until he quits
-else:
-    u.clean_exit()
+while u.is_active:              # Prompt the user until he quits
+    date = u.prompt_date()
+    u.mine(date)
+else:                           # Make a clean exit
+    u.save_data()
+    u.save_log()
+    u.logout()

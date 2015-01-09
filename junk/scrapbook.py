@@ -1,3 +1,6 @@
+        self.rec('Mining the following day: {}', day.strftime('%d.%m.%Y'))
+
+
 Now we are going to make a POST request with that request. This bit uses urllib to encode the POSTDATA.
 
 #import needed modules
