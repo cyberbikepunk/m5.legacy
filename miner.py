@@ -3,7 +3,7 @@ import re
 
 class Miner:
     """
-    The Miner class scrapes data off the company server.
+    The Miner class scrapes off data from the company server.
     """
 
     def __init__(self, date, session, server):
@@ -17,15 +17,15 @@ class Miner:
         self.date = date
         self._session = session
         self._server = server
-        self.regex = ''
 
+    @property
     def has_been_mined(self):
         return False
 
     def fetch_jobs(self):
         """
-        Return all the jobs that the user has completed on a given day.
-        Each job has unique 'uuid' request parameter.
+        Return the jobs that the user has completed on a given day.
+        Jobs are reached through a unique 'uuid' request parameter.
 
         :return: (set) A set of 'uuid' strings
         """
@@ -34,18 +34,16 @@ class Miner:
         response = self._session.get(self._server+path, params=payload)
         pattern = 'uuid=(\d{7})'
         jobs = re.findall(pattern, response.text)
-        # The 'uuid' parameter appears twice for each
-        # job (i.e. there are two separate links) so
-        # let'S get rid of the duplicates.
+        # The 'uuid' parameter appears twice (there are
+        # two separate links) so dump the duplicates.
         return set(jobs)
 
     def scrape_job(self, job):
         """
-        Request the job's url and scrape as much information
-        as we can using the regex engine.
+        Request the job's url and regex the shit out of the webpage.
 
-        :param job: (str) the 'uuid' request parameter for that job
-        :return: (dict) field/value pairs
+        :param job: (str) the 'uuid' request parameter
+        :return: (dict) data field/value pairs
         """
         url = self._server + 'll_detail.php5'
         payload = {'status': 'delivered', 'uuid': job}
@@ -55,8 +53,8 @@ class Miner:
     @property
     def _compiled_regex(self):
         """
-        Define the regex groups for the fields we're trying to scrape
-        and compile the regex pattern.
+        Define and compile the regex pattern for each field.
+        We break it down into small pieces for sanity.
 
         :return: (re.pattern obj)
         """
@@ -67,8 +65,7 @@ class Miner:
         groups = []
         for name, pattern in fields.items():
             groups.append(pattern.format(name))
-
-        regex = re.compile(' '.join(groups))
+        regex = re.compile(''.join(groups))
         return regex
 
     def package_job(self, data):

@@ -11,13 +11,12 @@ from miner import Miner
 
 class User:
     """
-    The User class manages user information, activity and stores user
-    data. In short, it's the backbone of the program.
+    The User class manages user information and activity.
     """
 
     def __init__(self):
         """
-        Initialize all User class attributes.
+        Initialize class attributes.
         """
         self._username = ''
         self._password = ''
@@ -30,35 +29,40 @@ class User:
     @property
     def _server(self):
         """
-        :return: (str) the company server
+        :return: (str) The company host server.
         """
         return 'http://bamboo-mec.de/'
 
+    @property
     def _credentials(self):
         """
-        Return the payload for the post request on the login page,
-        as required by the request module.
-
-        :return: (dict) user credentials
+        :return: (dict) The payload for the post request on the login page.
         """
         return {'username': self._username,
                 'password': self._password}
-
+    @property
     def _userfile(self):
         """
-        The user data file contains pickled data. For now
-        we store everything in the working directory.
-
-        :return: (str) Relative path to the user data file
+        :return: (str) The relative path to the user data file.
         """
         return self._username + '.pkl'
 
+    @property
+    def is_returning(self):
+        """
+        :return: (bool) True if we find a user data file.
+        """
+
+        if isfile(self._userfile):
+            self._rec('Data file {} found! You are a returning user.', self._userfile)
+            return True
+        else:
+            self._rec('Welcome {}! You are a newbie.', self._username)
+            return False
+
     def authenticate(self):
         """
-        Prompt for user credentials and try logging onto the company
-        server. Raise a flag when successfully logged in. We detect success
-        by looking for the word 'erfolgreich' (success in german) in the
-        html returned by the server. Is there a better way?
+        Log onto the company server.
         """
         path = 'll.php5'
         self._username = 'm-134'                # input('Enter username: ')
@@ -68,55 +72,37 @@ class User:
                                                     '(X11; Ubuntu; Linux x86_64; rv:31.0) '
                                                     'Gecko/20100101 Firefox/31.0'})
         response = self._session.post(self._server+path,
-                                      self._credentials(),
+                                      self._credentials,
                                       timeout=10.0)
-
+        # We detect success by looking for the word 'erfolgreich'.
         if response.text.find('erfolgreich') > 0:
             self._rec('Hello {}, you are now logged in!', self._username)
         else:
             self._rec('Invalid username or password... try again!')
             self.authenticate()
 
-    def is_returning(self):
+    def load_data(self):
         """
-        Test whether the user has used the program before by looking for
-        a matching data file. Avoid mining data twice.
-
-        :return: (bool) True if we find the file.
+        Load the pickled user data from file. We don't handle
+        exexptions because we absolutely need past data.
         """
-
-        if isfile(self._userfile()):
-            self._rec('Data file {} found! You are a returning user.', self._userfile())
-            return True
-        else:
-            self._rec('Welcome {}! You are a newbie.', self._username)
-            return False
+        f = open(self._userfile, 'rb')
+        self.data = load(f)
+        f.close()
+        self._rec('Existing data loaded from {}.', self._userfile)
 
     def save_data(self):
         """
-        Pickle the user data object to file. This is not
-        best way to store large quantities of data but it will
-        do for now.
+        Pickle the user data to file. No database will do for now.
         """
-        f = open(self._userfile(), 'wb')
+        f = open(self._userfile, 'wb')
         dump(self, f, -1)  # Highest protocol
         f.close()
-        self._rec('Current data saved to {}.', self._userfile())
-
-    def load_data(self):
-        """
-        Load the pickled user data object from the file.
-        We don't handle any exexptions because we need
-        access to past data.
-        """
-        f = open(self._userfile(), 'rb')
-        self.data = load(f)
-        f.close()
-        self._rec('Existing data loaded from {}.', self._userfile())
+        self._rec('Current data saved to {}.', self._userfile)
 
     def save_log(self):
         """
-        Append the all current log messages to the user log file.
+        Append all current log messages to user log file.
         """
         logfile = self._username + '.log'
         f = open(logfile, 'a')
@@ -126,11 +112,10 @@ class User:
 
     def _rec(self, message, *args):
         """
-        Write to the user log (list of strings). The message
-        is also sent to the screen.
+        Write to user log and print to screen.
 
-        :argument message: (str) the unformatted log message
-        :argument *args: (str) positional formatting arguments
+        :argument message: (str) Log message format.
+        :argument *args: (str) Positional arguments.
         """
         message = message.format(*args)
         timestamp = '{:%Y-%m-%d %H:%M:%S %fms}'.format(datetime.now())
@@ -140,7 +125,7 @@ class User:
 
     def logout(self):
         """
-        Logout from the company server by 'clicking' on logout:
+        Logout from the server.
         """
         path = 'index.php5'
         payload = {'logout': '1'}
@@ -150,10 +135,10 @@ class User:
 
     def prompt_date(self):
         """
-        Prompt for a date in the format 'dd.mm.yyyy' or the word 'quit'.
-        If the date format cannot be read, prompt again!
+        Prompt for 'quit' or a date in the format 'dd.mm.yyyy'.
+        If the date cannot be read, prompt again!
 
-        :return: (datetime obj) the chosen date
+        :return: (datetime obj) The chosen date.
         """
         input_string = '19.12.2014'  # input('Enter a date or type "quit":')
         if input_string == 'quit':
@@ -169,16 +154,13 @@ class User:
 
     def mine(self, date):
         """
-        Launch the mining process: check wether that particular day has
-        already been mined. If so, well, don't do anything. If not,
-        instantiate a miner object and start mining. If the mining
-        process is succesfull, make sure the resulting data is stored!
+        Check whether that day been mined before. If not, mine and store the data.
         """
         m = Miner(date=date,
                   session=self._session,
                   server=self._server)
 
-        if m.has_been_mined():
+        if m.has_been_mined:
             self._rec('{} has already been mined', date.strftime('%d.%m.%Y'))
         else:
             jobs = m.fetch_jobs()

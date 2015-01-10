@@ -11,7 +11,7 @@ import user
 # kept really simple.
 
 u = user.User()
-u.authenticate()            # Login on the company server
+u.authenticate()                # Log onto the company server
 
 if u.is_returning():            # Don't mine data twice: fetch existing data
     u.load_data()
