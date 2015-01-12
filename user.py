@@ -40,6 +40,7 @@ class User:
         """
         return {'username': self._username,
                 'password': self._password}
+
     @property
     def _userfile(self):
         """
@@ -52,7 +53,6 @@ class User:
         """
         :return: (bool) True if we find a user data file.
         """
-
         if isfile(self._userfile):
             self._rec('Data file {} found! You are a returning user.', self._userfile)
             return True
@@ -74,7 +74,7 @@ class User:
         response = self._session.post(self._server+path,
                                       self._credentials,
                                       timeout=10.0)
-        # We detect success by looking for the word 'erfolgreich'.
+        # We detect success by looking for the word success in german.
         if response.text.find('erfolgreich') > 0:
             self._rec('Hello {}, you are now logged in!', self._username)
         else:
@@ -84,7 +84,7 @@ class User:
     def load_data(self):
         """
         Load the pickled user data from file. We don't handle
-        exexptions because we absolutely need past data.
+        exceptions because we absolutely need past data.
         """
         f = open(self._userfile, 'rb')
         self.data = load(f)
@@ -93,7 +93,7 @@ class User:
 
     def save_data(self):
         """
-        Pickle the user data to file. No database will do for now.
+        Pickle the user data to file. No database for now.
         """
         f = open(self._userfile, 'wb')
         dump(self, f, -1)  # Highest protocol
@@ -154,7 +154,7 @@ class User:
 
     def mine(self, date):
         """
-        Check whether that day been mined before. If not, mine and store the data.
+        Check whether that day has been mined before. If not, mine and store the data.
         """
         m = Miner(date=date,
                   session=self._session,
