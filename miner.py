@@ -1,4 +1,5 @@
 import re
+from bs4 import BeautifulSoup
 
 
 class Miner:
@@ -8,7 +9,7 @@ class Miner:
 
     def __init__(self, date, session, server):
         """
-        Initialize all class attributes.
+        Initialize class attributes.
 
         :param date: (datetime obj) date to be mined
         :param session: (request.session obj) current session
@@ -38,35 +39,38 @@ class Miner:
         # two separate links) so dump the duplicates.
         return set(jobs)
 
-    def scrape_job(self, job):
+    def scrape_job(self, html):
         """
-        Request the job's url and regex the shit out of the webpage.
+        Regex as much as possible out of the html.
+
+        :param job: (str) pretty html
+        :return: (dict) data field/value pairs
+        """
+        return None
+
+    def get_job(self, job):
+        """
+        Request the job's url and return pretty html.
 
         :param job: (str) the 'uuid' request parameter
-        :return: (dict) data field/value pairs
+        :return: (str) pretty html
         """
         url = self._server + 'll_detail.php5'
         payload = {'status': 'delivered', 'uuid': job}
         response = self._session.get(url, params=payload)
-        return self._compiled_regex.match(response.text)
+        soup = BeautifulSoup(response.text)
+        html = soup.prettify()
+        self._save_job(html=html, job=job)
+        return html
 
-    @property
-    def _compiled_regex(self):
+    def _save_job(self, html, job):
         """
-        Define and compile the regex pattern for each field.
-        We break it down into small pieces for sanity.
-
-        :return: (re.pattern obj)
+        Save the pretty html soup version of the job to file.
         """
-        fields = {'id': r'<h2>(?P<{}>\d{10})',
-                  'type': r'\|\s(?P<{}>\w*),',
-                  'stops': r'(?P<{}>Stadtstop)'}
-
-        groups = []
-        for name, pattern in fields.items():
-            groups.append(pattern.format(name))
-        regex = re.compile(''.join(groups))
-        return regex
+        f = self.date.strftime('%d.%m.%Y') + '-' + job + '.html'
+        f = open(f, 'w')
+        f.write(html)
+        f.close()
 
     def package_job(self, data):
         pass

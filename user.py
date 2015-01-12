@@ -64,14 +64,14 @@ class User:
         """
         Log onto the company server.
         """
-        path = 'll.php5'
+        login_url = self._server + 'll.php5'
         self._username = 'm-134'                # input('Enter username: ')
         self._password = 'PASSWORD'             # getpass('Enter password: ')
         self._session = Session()
         self._session.headers.update({'user-agent': 'Mozilla/5.0 '
                                                     '(X11; Ubuntu; Linux x86_64; rv:31.0) '
                                                     'Gecko/20100101 Firefox/31.0'})
-        response = self._session.post(self._server+path,
+        response = self._session.post(login_url,
                                       self._credentials,
                                       timeout=10.0)
         # We detect success by looking for the word success in german.
@@ -166,10 +166,10 @@ class User:
             jobs = m.fetch_jobs()
             if jobs:
                 for j in jobs:
-                    data = m.scrape_job(j)
-                    print(data)
-                    exit()
-                    # m.package_job(data)
-                    # self.mined.add(date)
-                self._rec('Mined successfully: ', date.strftime('%d.%m.%Y'))
+                    html = m.get_job(j)
+                    if False:  # later
+                        data = m.scrape_job(html)
+                        m.package_job(data)
+                        self.mined.add(date)
+                self._rec('Mined successfully: {}', date.strftime('%d.%m.%Y'))
 

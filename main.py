@@ -13,12 +13,13 @@ import user
 u = user.User()
 u.authenticate()                # Log onto the company server
 
-if u.is_returning():            # Don't mine data twice: fetch existing data
+if u.is_returning:              # Don't mine data twice: fetch existing data
     u.load_data()
 
 while u.is_active:              # Prompt the user until he quits
     date = u.prompt_date()
     u.mine(date)
+    break                       # One day at a time for now
 else:                           # Make a clean exit
     u.save_data()
     u.save_log()
