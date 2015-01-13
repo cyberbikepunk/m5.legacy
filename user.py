@@ -167,7 +167,7 @@ class User:
             if jobs:
                 for j in jobs:
                     html = m.get_job(j)
-                    if False:  # later
+                    if False:  # Todo : stop here for now
                         data = m.scrape_job(html)
                         m.package_job(data)
                         self.mined.add(date)
