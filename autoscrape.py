@@ -2,88 +2,87 @@ from bs4 import BeautifulSoup
 import re
 
 
-def section_blueprints():
+def _blueprints():
     """
-    Define the blueprints for the section scraper. Each blueprint is keyed
-    by the html tag that it targets and contains information about:
-        - which lines to scrape
-        - what fields to look for in each line
+    Define the blueprints for the section scraper. The order of the list is
+    important. Each blueprint contains information about:
+        - which tag to target in the DOM
+        - which lines to scrape inside the tag
         - what regex pattern to run on each line
+        - what fields to return for each line
 
-    :return: (dict) A dictionary of blueprints
+    :return: (list) A list of blueprint dictionaries
     """
-    blueprint = dict()
+    # Three sections appear strictly once
+    blueprints = list(range(3))
+
     # General information
-    blueprint['h2'] = {'lines': [0],
-                       'patterns': [r'(?:BAR\s)?(\d{10})'],
-                       'fields': [['id']]
-                       }
+    blueprints[0] = {
+        'tag': 'h2',
+        'lines': [0],
+        'patterns': [r'(BAR\s)?(\d{10})'],
+        'fields': [['cash_payment', 'id']]
+    }
     # Client information
-    blueprint['h4'] = {'lines': [0],
-                       'patterns': [r'Kunde:\s(.*)\s\|\s(\d{5})'],
-                       'fields': [['client_name', 'client_number']]
-                       }
-    return blueprint
+    blueprints[1] = {
+        'tag': 'h4',
+        'lines': [0],
+        'patterns': [r'Kunde:\s(.*)\s\|\s(\d{5})'],
+        'fields': [['client_name', 'client_number']]
+    }
+    # Trip information
+    blueprints[2] = {
+        'tag': 'p',
+        'lines': [0],
+        'patterns': [r'(\d{1,2},\d{3})\skm'],
+        'fields': [['km']]
+    }
 
-def main():
-    file = open('19.12.2014-2976786.html')
-    html_source = BeautifulSoup(file).find(id='order_detail')
-    fields = dict()
+    # Arbitrary number of stops
 
-    # Scrape the prices at the bottom of the page
-    prices = scrape_prices(html_source)
-    fields.update(prices)
 
-    # Scrape multiple subsections
-    # of the page using our blueprints
-    sections = section_blueprints()
-    for tag, section in sections.items():
-        html_subset = html_source.find(name=tag)
-        miscellaneous = scrape_section(section, html_subset)
+    return blueprints
 
-    fields.update(miscellaneous)
-    print(fields)
-
-def scrape_section(bp, source):
+def _scrape_section(bp, source):
     """
-    Scrape off a small section from the html document contained
-    inside a tag. Done using BeautifulSoup and a little regex magic.
+    Scrape off a small section contained inside a tag
+    with BeautifulSoup and a little regex.
 
-    :param bp: (dict) The section blueprint
+    :param bp: (dict) The blueprint for the section
     :param source: (str) cleaned up html produced by BeautifulSoup
     :return: (dict) field name/value pairs
     """
-    strings = list(source.stripped_strings)
-    section_fields = dict()
+    contents = list(source.stripped_strings)
+    fields = dict()
 
     for line in bp['lines']:
-        match = re.match(bp['patterns'][line], strings[line])
+        match = re.match(bp['patterns'][line], contents[line])
         for index, name in enumerate(bp['fields'][line]):
             # Indices for matched groups start at 1
-            section_fields[name] = match.group(index+1)
+            fields[name] = match.group(index+1)
 
-    return section_fields
+    return fields
 
 
 def scrape_prices(source):
     """
     Scrape the 'prices' table at the bottom of the page. This section is
-    scraped seperately precisely because it's formatted as a table.
+    scraped seperately precisely because it's already formatted as a table.
 
     :param source: (str) cleaned up html produced by BeautifulSoup
     :return: (dict) field name/value pairs
     """
     # Grab the only html table in the document
     html_subset = source.find(name='tbody')
-    lines = list(html_subset.stripped_strings)
+    cells = list(html_subset.stripped_strings)
 
     # The table is returned as a one-dimensional list
-    # of strings but we want it in dictionary format.
-    prices = dict(zip(lines[::2], lines[1::2]))
+    # of cells but we want it in dictionary format.
+    prices = dict(zip(cells[::2], cells[1::2]))
 
     # Original field names are no good. Change them.
     keys = [('Stadtkurier', 'city_tour'),
-            ('Stadtstop(s)', 'extra_stops'),
+            ('Stadt Stopp(s)', 'extra_stops'),
             ('OV.', 'overnight'),
             ('EmpfangsbestÃ¤t.',  'fax_return'),
             ('Wartezeit min.',  'waiting_time')]
@@ -93,4 +92,40 @@ def scrape_prices(source):
 
     return prices
 
-main()
+def main(filename):
+    file = open(filename)
+    html_source = BeautifulSoup(file).find(id='order_detail')
+    fields = dict()
+
+    # Scrape the prices at the bottom of the page
+    prices = scrape_prices(html_source)
+    fields.update(prices)
+
+    # Scrape multiple subsections of the page
+    # using the blueprints we've prepared
+    blueprints = _blueprints()
+    for blueprint in blueprints:
+        html_subset = html_source.find_next(blueprint['tag'])
+        fields_subset = _scrape_section(blueprint, html_subset)
+        fields.update(fields_subset)
+
+    print(filename)
+    print(fields)
+
+
+filenames = [
+    '19.12.2014-2973926.html',
+    '19.12.2014-2974276.html',
+    '19.12.2014-2974278.html',
+    '19.12.2014-2974685.html',
+    '19.12.2014-2974730.html',
+    '19.12.2014-2974918.html',
+    '19.12.2014-2975095.html',
+    '19.12.2014-2975147.html',
+    '19.12.2014-2976587.html',
+    '19.12.2014-2976667.html',
+    '19.12.2014-2976786.html',
+    '19.12.2014-2977728.html',
+    ]
+for f in filenames:
+    main(f)
