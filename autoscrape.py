@@ -25,37 +25,55 @@ TAGS = {
     }
 }
 
-BLUEPRINTS = {
+BLUEPRINTS = {  # TODO add transport type and package description
     'address': {
-        'purpose': {'line': 0, 'pattern': r'(Abholung|Zustellung)'},
-        'company': {'line': 1, 'pattern': r'(.*)'},
-        'address': {'line': 2, 'pattern': r'(.*)'},
-        'postal_code': {'line': 3, 'pattern': r'(\d{5})(?:.*)'},
-        'city': {'line': 3, 'pattern': r'(\d{5})(?:.*)'},
-        'from': {'line': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})'},
-        'until': {'line': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})'},
-        'timestamp': {'line': -2, 'pattern': r'ST:\s(\d{2}:\d{2})'}
+        'company': {'line': 1, 'pattern': r'(.*)', 'optional': False},
+        'address': {'line': 2, 'pattern': r'(.*)', 'optional': False},
+        'city': {'line': 3, 'pattern': r'(?:\d{5})\s(.*)', 'optional': False},
+        'postal_code': {'line': 3, 'pattern': r'(\d{5})(?:.*)', 'optional': False},
+        'from': {'line': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
+        'purpose': {'line': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
+        'timestamp': {'line': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
+        'until': {'line': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True}
     },
     'header': {
-        'id': {'line': 0, 'pattern': r'.*(\d{10})'},
-        'cash_payment': {'line': 0, 'pattern': '(BAR)'}
+        'id': {'line': 0, 'pattern': r'.*(\d{10})', 'optional': True},
+        'cash_payment': {'line': 0, 'pattern': '(BAR)', 'optional': True}
     },
     'client': {
-        'client_name': {'line': 0, 'pattern': r'Kunde:\s(.*)\s\|'},
-        'client_id': {'line': 0, 'pattern': r'.*|\s(\d{5})'}
+        'client_id': {'line': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
+        'client_name': {'line': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False}
     },
     'itinerary': {
-        'km': {'line': 0, 'pattern': r'(\d{1,2},\d{3})\skm'}
+        'km': {'line': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True}
     }
 }
+
+def _print_debug_message(name, item, contents):
+    """
+    Print a debug message showing exactly where the scraping went wrong.
+
+    :param name: (str) the name of the field
+    :param item: (dict) the field information
+    :param item: (list) the section of the document
+    """
+    print('**************************************************')
+    print('Could not scrape \'{}\' from \'{}\' on line {}\n'.format(
+        name,
+        contents[item['line']],
+        item['line'])
+    )
+    for line, content in enumerate(contents):
+        print(line, ': ', content)
+    print('**************************************************\n')
 
 def _scrape_subset(fields, soup_subset):
     """
     Scrape a sub-section of the html document. The document format very is unreliable:
     the number of lines in each section varies and the number of fields on each line
-    also varies! For this reason, our scraping strategy is conservative. Our motto is:
-    one field at a time! The goal is to end up with a robust set of data. Failure to
-    collect information is not a show-stopper but we should know about it!
+    also varies! For this reason, our scraping strategy is... well... conservative.
+    The motto is: one field at a time! The goal is to end up with a robust set of data.
+    Failure to collect information is not a show-stopper but we should know about it!
 
     :param fields: (dict) the fields to be collected
     :param soup_subset: (tag object) cleaned up html
@@ -69,42 +87,35 @@ def _scrape_subset(fields, soup_subset):
         if match:
             collected[name] = match.group(1)
         else:
-            print('**************************************************')
-            print('Could not scrape \'{}\' from \'{}\' on line {}\n'.format(
-                name,
-                contents[item['line']],
-                item['line'])
-            )
-            for line, content in enumerate(contents):
-                    print(line, ': ', content)
-            print('**************************************************\n')
-            collected[name] = None
+            if item['optional']:
+                collected[name] = None
+            else:
+                _print_debug_message(name, item, contents)
 
     return collected
 
 def scrape_job(soup):
     """
     Scrape the shit out of the html document using BeautifulSoup and a little regex.
-    In three steps: first, job attributes, then prices and finally addresses. Attributes
-    and prices are returned as dictionaries and addresses as a list of dictionaries.
+    Job details are returned as a dictionary and addresses as a list of dictionaries.
     Each dictionary contains field name/value pairs. All values are raw strings.
 
     :param soup: (tag object) cleaned up html produced by BeautifulSoup
-    :return: (tuple) attributes, prices, addresses
+    :return: (tuple) details, addresses
     """
-    information = dict()
+    details = dict()
 
-    # Scrape various sections of the document
+    # Scrape various sections in the document
     subsets = ['header', 'client', 'itinerary']
     for subset in subsets:
         soup_subset = soup.find_next(name=TAGS[subset]['name'])
         fields_subset = _scrape_subset(BLUEPRINTS[subset], soup_subset)
-        information.update(fields_subset)
+        details.update(fields_subset)
 
     # Scrape prices at the bottom of the page
     soup_subset = soup.find(TAGS['prices']['name'])
     prices = _scrape_prices(soup_subset)
-    information.update(prices)
+    details.update(prices)
 
     # Scrape an arbitrary number of addresses
     soup_subsets = soup.find_all(name=TAGS['address']['name'], attrs=TAGS['address']['attrs'])
@@ -113,7 +124,7 @@ def scrape_job(soup):
         address = _scrape_subset(BLUEPRINTS['address'], soup_subset)
         addresses.append(address)
 
-    return information, addresses
+    return details, addresses
 
 def _scrape_prices(soup_subset):
     """
@@ -130,18 +141,23 @@ def _scrape_prices(soup_subset):
     prices_table = dict(zip(cells[::2], cells[1::2]))
 
     # Original field names are no good. Change them.
-    # Note: there are several flavours of overnights
+    # Note: there are several flavours of overnights.
     keys = [
         ('Stadtkurier',         'city_tour'),
         ('Stadt Stopp(s)',      'extra_stops'),
         ('OV Ex Nat PU',        'overnight'),
-        ('ON Ex Nat Del.',      'overnight'),
+        ('ON Ex Nat Del.',      'overnight'),  # TODO Keep my eyes open for more OV flavours
         ('EmpfangsbestÃ¤t.',    'fax_confirm'),
         ('Wartezeit min.',      'waiting_time')
     ]
     for old, new in keys:
         if old in prices_table:
             prices_table[new] = prices_table.pop(old)
+
+    # This field contains the waiting time in minutes
+    # as well as the price. We just want the price.
+    if 'waiting_time' in prices_table.keys():
+        prices_table['waiting_time'] = prices_table['waiting_time'][7::]
 
     return prices_table
 
@@ -163,7 +179,7 @@ def main():
     pp = pprint.PrettyPrinter()
     for filename in filenames:
         with open(filename) as file_handle:
-            soup = BeautifulSoup(file_handle).find(id='order_detail')
+            soup = BeautifulSoup(file_handle).find(id='order_detail')  # TODO Fix Unicode problem
             data = scrape_job(soup)
             print(filename)
             pp.pprint(data[0])
