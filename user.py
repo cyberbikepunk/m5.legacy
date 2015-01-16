@@ -68,12 +68,10 @@ class User:
         self._username = 'm-134'                # input('Enter username: ')
         self._password = 'PASSWORD'             # getpass('Enter password: ')
         self._session = Session()
-        self._session.headers.update({'user-agent': 'Mozilla/5.0 '
-                                                    '(X11; Ubuntu; Linux x86_64; rv:31.0) '
-                                                    'Gecko/20100101 Firefox/31.0'})
-        response = self._session.post(login_url,
-                                      self._credentials,
-                                      timeout=10.0)
+
+        self._session.headers.update({'user-agent': 'Mozilla/5.0 Firefox/31.0'})
+        response = self._session.post(login_url, self._credentials, timeout=10.0)
+
         # We detect success by looking for the word success in german.
         if response.text.find('erfolgreich') > 0:
             self._rec('Hello {}, you are now logged in!', self._username)
@@ -135,8 +133,8 @@ class User:
 
     def prompt_date(self):
         """
-        Prompt for 'quit' or a date in the format 'dd.mm.yyyy'.
-        If the date cannot be read, prompt again!
+        Prompt for 'quit' or a date in the format 'dd.mm.yyyy'. If the date cannot be read,
+        prompt again!
 
         :return: (datetime obj) The chosen date.
         """
@@ -156,20 +154,22 @@ class User:
         """
         Check whether that day has been mined before. If not, mine and store the data.
         """
-        m = Miner(date=date,
-                  session=self._session,
-                  server=self._server)
+        m = Miner(date=date, session=self._session, server=self._server)
+        date_string = date.strftime('%d-%m-%Y')
 
-        if m.has_been_mined:
-            self._rec('{} has already been mined', date.strftime('%d.%m.%Y'))
+        if date in self.mined:
+            self._rec('{} has already been mined', date_string)
         else:
             jobs = m.fetch_jobs()
-            if jobs:
+            if not jobs:
+                self._rec('No jobs found for {}', date_string)
+            else:
                 for j in jobs:
-                    html = m.get_job(j)
-                    if False:
-                        data = m.scrape_job(html)
-                        m.package_job(data)
-                        self.mined.add(date)
-                self._rec('Mined successfully: {}', date.strftime('%d.%m.%Y'))
-
+                    soup = m.get_job(j)
+                    data = m.scrape_job(soup)
+                    m.package_job(data)
+                # Now do the paperwork
+                self.mined.add(date)
+                for message in m.debug_messages:
+                    self._rec(message)
+                self._rec('Mined {} successfully.', date_string)
