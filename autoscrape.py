@@ -1,68 +1,125 @@
 from bs4 import BeautifulSoup
 import re
+import pprint
 
-
-def _attributes_blueprints():
-    """
-    Define the blueprints for the attributes scraper. The order of the
-    list is important. Each blueprint contains information about:
-        - which tag to target in the DOM
-        - which lines to scrape inside the tag
-        - what regex pattern to run on each line
-        - what fields to return for each line
-
-    :return: (list) A list of blueprint dictionaries
-    """
-    # Define three blueprints
-    attributes_blueprints = list(range(3))
-
-    # General attributes
-    attributes_blueprints[0] = {
-        'tag': 'h2',
-        'lines': [0],
-        'patterns': [r'(BAR\s)?(\d{10})'],
-        'fields': [['cash_payment', 'id']]
+TAGS = {
+    'address': {
+        'name': 'div',
+        'attrs': {'data-collapsed': 'true'}
+    },
+    'header': {
+        'name': 'h2',
+        'attrs': {}
+    },
+    'client': {
+        'name': 'h4',
+        'attrs': {}
+    },
+    'itinerary': {
+        'name': 'p',
+        'attrs': {}
+    },
+    'prices': {
+        'name': 'tbody',
+        'attrs': {}
     }
-    # Client attributes
-    attributes_blueprints[1] = {
-        'tag': 'h4',
-        'lines': [0],
-        'patterns': [r'Kunde:\s(.*)\s\|\s(\d{5})'],
-        'fields': [['client_name', 'client_number']]
-    }
-    # Trip attributes
-    attributes_blueprints[2] = {
-        'tag': 'p',
-        'lines': [0],
-        'patterns': [r'(\d{1,2},\d{3})\skm'],
-        'fields': [['km']]
-    }
-    return attributes_blueprints
+}
 
-def _scrape_attributes(blueprint, soup_subset):
+BLUEPRINTS = {
+    'address': {
+        'purpose': {'line': 0, 'pattern': r'(Abholung|Zustellung)'},
+        'company': {'line': 1, 'pattern': r'(.*)'},
+        'address': {'line': 2, 'pattern': r'(.*)'},
+        'postal_code': {'line': 3, 'pattern': r'(\d{5})(?:.*)'},
+        'city': {'line': 3, 'pattern': r'(\d{5})(?:.*)'},
+        'from': {'line': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})'},
+        'until': {'line': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})'},
+        'timestamp': {'line': -2, 'pattern': r'ST:\s(\d{2}:\d{2})'}
+    },
+    'header': {
+        'id': {'line': 0, 'pattern': r'.*(\d{10})'},
+        'cash_payment': {'line': 0, 'pattern': '(BAR)'}
+    },
+    'client': {
+        'client_name': {'line': 0, 'pattern': r'Kunde:\s(.*)\s\|'},
+        'client_id': {'line': 0, 'pattern': r'.*|\s(\d{5})'}
+    },
+    'itinerary': {
+        'km': {'line': 0, 'pattern': r'(\d{1,2},\d{3})\skm'}
+    }
+}
+
+def _scrape_subset(fields, soup_subset):
     """
-    Scrape off the contents contained inside a given html tag
-    using the blueprint we've prepared.
+    Scrape a sub-section of the html document. The document format very is unreliable:
+    the number of lines in each section varies and the number of fields on each line
+    also varies! For this reason, our scraping strategy is conservative. Our motto is:
+    one field at a time! The goal is to end up with a robust set of data. Failure to
+    collect information is not a show-stopper but we should know about it!
 
-    :param blueprint: (dict) The blueprint for the tag contents
+    :param fields: (dict) the fields to be collected
     :param soup_subset: (tag object) cleaned up html
     :return: (dict) field name/value pairs
     """
     contents = list(soup_subset.stripped_strings)
-    fields = dict()
 
-    for line in blueprint['lines']:
-        match = re.match(blueprint['patterns'][line], contents[line])
-        for index, name in enumerate(blueprint['fields'][line]):
-            # Indices for matched groups start at 1
-            fields[name] = match.group(index+1)
+    collected = dict()
+    for name, item in fields.items():
+        match = re.match(item['pattern'], contents[item['line']])
+        if match:
+            collected[name] = match.group(1)
+        else:
+            print('**************************************************')
+            print('Could not scrape \'{}\' from \'{}\' on line {}\n'.format(
+                name,
+                contents[item['line']],
+                item['line'])
+            )
+            for line, content in enumerate(contents):
+                    print(line, ': ', content)
+            print('**************************************************\n')
+            collected[name] = None
 
-    return fields
+    return collected
+
+def scrape_job(soup):
+    """
+    Scrape the shit out of the html document using BeautifulSoup and a little regex.
+    In three steps: first, job attributes, then prices and finally addresses. Attributes
+    and prices are returned as dictionaries and addresses as a list of dictionaries.
+    Each dictionary contains field name/value pairs. All values are raw strings.
+
+    :param soup: (tag object) cleaned up html produced by BeautifulSoup
+    :return: (tuple) attributes, prices, addresses
+    """
+    information = dict()
+
+    # Scrape various sections of the document
+    subsets = ['header', 'client', 'itinerary']
+    for subset in subsets:
+        soup_subset = soup.find_next(name=TAGS[subset]['name'])
+        fields_subset = _scrape_subset(BLUEPRINTS[subset], soup_subset)
+        information.update(fields_subset)
+
+    # Scrape prices at the bottom of the page
+    soup_subset = soup.find(TAGS['prices']['name'])
+    prices = _scrape_prices(soup_subset)
+    information.update(prices)
+
+    # Scrape an arbitrary number of addresses
+    soup_subsets = soup.find_all(name=TAGS['address']['name'], attrs=TAGS['address']['attrs'])
+    addresses = list()
+    for soup_subset in soup_subsets:
+        address = _scrape_subset(BLUEPRINTS['address'], soup_subset)
+        addresses.append(address)
+
+    return information, addresses
 
 def _scrape_prices(soup_subset):
     """
-    Scrape off the 'prices' table at the bottom of the page. This section is
-    scraped seperately precisely because it's already formatted as a table.
+    Scrape off the 'prices' table at the bottom of the page.
+    This section is scraped seperately because it's already
+    formatted as a table.
 
     :param soup_subset: (tag object) cleaned up html
     :return: (dict) field name/value pairs
@@ -73,10 +130,12 @@ def _scrape_prices(soup_subset):
     prices_table = dict(zip(cells[::2], cells[1::2]))
 
     # Original field names are no good. Change them.
+    # Note: there are several flavours of overnights
     keys = [
         ('Stadtkurier',         'city_tour'),
         ('Stadt Stopp(s)',      'extra_stops'),
-        ('OV.',                 'overnight'),
+        ('OV Ex Nat PU',        'overnight'),
+        ('ON Ex Nat Del.',      'overnight'),
         ('EmpfangsbestÃ¤t.',    'fax_confirm'),
         ('Wartezeit min.',      'waiting_time')
     ]
@@ -85,90 +144,6 @@ def _scrape_prices(soup_subset):
             prices_table[new] = prices_table.pop(old)
 
     return prices_table
-
-def _address_blueprint():
-    """
-    Define the blueprint to scrape a single address.
-
-    :return: (dict) A blueprint to scrape addresses
-    """
-    address_blueprint = {
-        'lines': [0, 1, 2, 3, 6, 7],
-        'patterns': [
-            r'(Abholung)|(Zustellung)',
-            r'(.*)',
-            r'(.*)',
-            r'(\d{5})\s(.*)',
-            r'(?:.*)ab\s(\d{2}:\d{2})*(?:.*)bis\s(\d{2}:\d{2})*',
-            r'ST:\s(\d{2}:\d{2})'
-        ],
-        'fields': [
-            ['purpose'],
-            ['company'],
-            ['address'],
-            ['postal_code', 'city'],
-            ['from', 'until'],
-            ['timestamp']
-        ]
-    }
-    return address_blueprint
-
-def _scrape_address(soup_subset):
-    """
-    Scrape off all fields associated with an address, including for example
-    the pick-up or drop-off time window.
-
-    :param soup_subset: (str) cleaned up html
-    :return: (dict) field name/value pairs
-    """
-    blueprint = _address_blueprint()
-    contents = list(soup_subset.stripped_strings)
-    fields = dict()
-
-    for line_index, line in enumerate(blueprint['lines']):
-        print(blueprint['patterns'][line_index])
-        match = re.match(blueprint['patterns'][line_index], contents[line])
-        for field_index, name in enumerate(blueprint['fields'][line_index]):
-            # Indices for matched groups start at 1
-            fields[name] = match.group(field_index+1)
-
-    return fields
-
-def scrape_job(html):
-    """
-    Scrape the shit out of the html document using BeautifulSoup
-    and a little regex, in three steps: first, job attributes,
-    then prices and finally addresses. Attributes and prices
-    are returned as dictionaries and addresses as a list of
-    dictionaries. Each dictionary contains field name/value
-    pairs. All values are raw strings.
-
-    :param html: (tag object) cleaned up html produced by BeautifulSoup
-    :return: (tuple) attributes, prices, addresses
-    """
-    # Scrape various job attributes in various places
-    # attributes = dict()
-    # for blueprint in _attributes_blueprints():
-    #     html_subset = html.find_next(blueprint['tag'])
-    #     fields = _scrape_attributes(blueprint, html_subset)
-    #     attributes.update(fields)
-
-    # Scrape the prices from the only table on the page
-    # html_subset = html.find(name='tbody')
-    # prices = _scrape_prices(html_subset)
-
-    # Scrape an arbitrary number of addresses. A normal city tour has
-    # usually two addresses but sometimes more. An overnight tour has
-    # strictly two addresses, but the second is a delivery point outside
-    # of Berlin (and therefore irrelevant). We deal with these issues
-    # downstream.
-    addresses = list()
-    html_subsets = html.find_all(name='div', attrs={'data-collapsed': 'true'})
-    for html_subset in html_subsets:
-        address = _scrape_address(html_subset)
-        addresses.append(address)
-
-    return attributes, prices, addresses
 
 def main():
     filenames = [
@@ -185,10 +160,13 @@ def main():
         '19.12.2014-2976786.html',
         '19.12.2014-2977728.html',
     ]
-    for f in filenames:
-        file_handle = open(f)
-        soup = BeautifulSoup(file_handle).find(id='order_detail')
-        data = scrape_job(soup)
-        print(data)
-
+    pp = pprint.PrettyPrinter()
+    for filename in filenames:
+        with open(filename) as file_handle:
+            soup = BeautifulSoup(file_handle).find(id='order_detail')
+            data = scrape_job(soup)
+            print(filename)
+            pp.pprint(data[0])
+            pp.pprint(data[1])
+            print()
 main()
