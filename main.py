@@ -12,8 +12,6 @@ from m5 import user
 
 u = user.Messenger('m-134', 'PASSWORD')
 exit(0)
-if u.is_returning:              # Don't mine data twice: resurrect existing data
-    u.load_data()
 
 while u.is_active:              # Prompt the user until he quits
     date = u.prompt_date()      # TODO Extend the prompt to other commands

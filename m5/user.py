@@ -23,7 +23,7 @@ class Messenger:
 
     def __init__(self, username='', password=''):
         """  Authenticate the user and fetch local data if any. """
-
+        
         self._username = username
         self._password = password
         self._session = None
@@ -34,6 +34,14 @@ class Messenger:
         # The remote server where the data is stored:
         self._server = 'http://bamboo-mec.de/'
         self._authenticate(self._username, self._password)
+
+        # Data that has already been mined is stored locally
+        self._userdata = '../users/{}.pkl'.format(self._username)
+        self._userlog = '../users/{}.log'.format(self._username)
+
+        # Go and fetch it
+        if self._is_returning:
+            self._load_data()
 
     def _authenticate(self, username='', password=''):
         """ Make login attempts until successful. """
@@ -61,34 +69,23 @@ class Messenger:
             self._rec('Welcome {}! You are logged in.', self._username)
 
     @property
-    def _userlog(self):
-        """ :return: (str) The relative path to the user log file. Here will do. """
-        return self._username + '.log'
-
-    @property
-    def _userdata(self):
-        """ :return: (str) The relative path to the user data file. """
-        return self._username + '.pkl'
-
-    @property
-    def is_returning(self):
-        """ :return: (bool) True if we find out the user's already got a data file. """
+    def _is_returning(self) -> bool:
+        """ True if the user has local data. """
 
         if isfile(self._userdata):
-            self._rec('Data file {} found! You are a returning user.', self._userdata)
+            self._rec('You are a returning user.')
             return True
         else:
-            self._rec('Welcome {}! You are a newbie.', self._username)
+            self._rec('You are a new user.')
             return False
 
-    def load_data(self):
+    def _load_data(self):
         """ Load pickled user data from file. """
 
-        # We don't forgive file exceptions because we absolutely need access to past data.
-        # If we can't access it, let the program crash. Don't muddle up new data with old data.
+        # TODO Handle file I/O errors properly
         with open(self._userdata, 'rb') as f:
             self.data = load(f)
-            self._rec('Existing data loaded from {}.', self._userdata)
+            self._rec('Loaded user data successfully')
 
     def save_data(self):
         """ Pickle the user data to file. Yep, that our database! """
