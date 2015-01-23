@@ -1,3 +1,6 @@
+""" User related classes. """
+
+
 from requests import Session, Request
 from pickle import load, dump
 from os.path import isfile
@@ -27,18 +30,17 @@ class Messenger:
         self._username = username
         self._password = password
         self._session = None
-        self._miners = []
-        self.data = []
-        self._log = []
+        self._miners = set()
+        self._data = list()
 
-        # The remote server where the data is stored:
+        # The remote server where the company data is stored:
         self._server = 'http://bamboo-mec.de/'
         self._authenticate(self._username, self._password)
 
         # Data that has already been mined is stored locally
-        self._userdata = '../users/{}.pkl'.format(self._username)
+        self._datafile = 'users/{}.pkl'.format(self._username)
         if self._is_returning:
-            self._load_data()
+            self._load()
 
     def _authenticate(self, username='', password=''):
         """ Make login attempts until successful. """
@@ -69,91 +71,87 @@ class Messenger:
     def _is_returning(self) -> bool:
         """ True if the user has local data. """
 
-        if isfile(self._userdata):
+        if isfile(self._datafile):
             self._print('You are a returning user.')
             return True
         else:
             self._print('You are a new user.')
             return False
 
-    def _load_data(self):
+    def _load(self):
         """ Load pickled user data from file. """
 
         # TODO Handle file I/O errors properly
-        with open(self._userdata, 'rb') as f:
+        with open(self._datafile, 'rb') as f:
             self.data = load(f)
             self._print('Loaded user data successfully')
 
-    def save_data(self):
+    def save(self):
         """ Pickle the user data to file. Yep, that our database! """
 
-        with open(self._userdata, 'wb') as f:
+        with open(self._datafile, 'wb+') as f:
             # Pickle with the highest protocol. Whatever that is...
             dump(self, f, -1)
-            self._print('Current data saved to {}.', self._userdata)
+            self._print('Current data saved to {}.', self._datafile)
 
     def _print(self, message, *args):
-        """ Print a status message to screen.
+        """ Print a status message to screen. """
 
-        :param message: (str) Log message with positional curly brackets
-        :param *args: (str) Message arguments
-        """
-
-        # Make sure the log message is unambiguous
-        message = message.format (*args)
+        message = message.format(*args)
         timestamp = '{:%Y-%m-%d %H:%M:%S %fms}'.format(datetime.now())
-        entry = timestamp + ' | ' + message
+        formatted_message = self._username + ' | ' + timestamp + ' | ' + message
+        print(formatted_message)
 
-        # Send it both ways: screen and file
-        self._log.append(entry)
-        print(entry)
+    def quit(self):
+        """ Make a clean exit from the program. """
+        self.save()
+        self._logout()
+        exit(0)
 
-    def logout(self):
-        """ Logout from the server. """
+    def _logout(self):
+        """ Logout from the server and close the session. """
 
-        # TODO Maybe I should also close the session?
         url = self._server + 'index.php5'
         payload = {'logout': '1'}
         response = self._session.get(url, params=payload)
+        # We get redirected once
+        response = response.history[0]
 
         # Last words before we exit
-        if response.status == 302:
+        if response.status_code == 302:
             self._print('Successfully logged out. Goodbye!')
 
-    def prompt_date(self):
-        """ Prompt for 'quit' or a date in the format 'dd.mm.yyyy'.
+        self._session.close()
 
-        :return: (datetime obj)
+    def prompt(self, input_string=None):
+        """ Prompt the user for quit or a public method. """
+
+        if not input_string:
+            input_string = input('Enter "public_method(...)" or "quit()":  ')
+        try:
+            exec('self.' + input_string)
+        except (SyntaxError, ValueError, TypeError):
+            self.prompt()
+        except KeyboardInterrupt:
+            self.quit()
+
+    def mine(self, date_string):
+        """  If that date hasn't been mined before, mine it!
+
+        :param date_string: one day in the format dd-mm-yyyy
         """
 
-        # TODO Replace me later with a web frontend interface
-        input_string = '19.12.2014'  # input('Enter a date or type "quit":')
+        # Convert the input to a datetime object
+        date = datetime.strptime(date_string, '%d-%m-%Y')
 
-        # This way towards the exit ->
-        if input_string == 'quit':
-            self.is_active = False
-
-        else:
-            try:
-                day = datetime.strptime(input_string, '%d.%m.%Y')
-            except ValueError:
-                # If the date cannot be read, prompt again!
-                print('Input format must be dd-mm-yy. Try again...')
-                self.prompt_date()
-            else:
-                return day
-
-    def mine(self, date):
-        """ If that date hasn't received the treatment before, scrape it! """
-
-        date_string = date.strftime('%d-%m-%Y')
-
-        # Switch on the engine
+        # Turn the engine on
         m = Miner(date=date, session=self._session, server=self._server)
 
         # Been there, done that
-        if date in self.mined:
+        # TODO Check the existence of a miner instance
+        if False:
             self._print('{} has already been mined', date_string)
+            del m
 
         else:
             # Go browse the web summary page for that day
@@ -175,15 +173,13 @@ class Messenger:
 
                     # We wanna see results!
                     pp = PrettyPrinter()
-                    pp.pprint(m.raw_data[0])                    # Job details
-                    pp.pprint(m.raw_data[1])                    # Price table
-                    [pp.pprint(d) for d in m.raw_data[2]]       # Addresses
+                    pp.pprint(m.raw_data)
 
                 # Now do the book-keeping
-                self.mined.add(date)
+                self._miners.add(m)
 
-                # TODO We're never gonna scrape with a 100% success rate, but let's do better next time!
                 self._print('Mined: {} successfully!', date_string)
+                # If some fields failed to be scraped,
+                # return some feedback about the context
                 for message in m.debug_messages:
                     self._print(message)
-
