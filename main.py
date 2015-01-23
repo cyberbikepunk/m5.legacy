@@ -2,7 +2,7 @@
 
 __author__ = 'Loic Jounot (loic@cyberpunk.bike)'
 
-from m5.user import User
+import m5
 
 
 # The general idea is to help the bike messenger log on
@@ -10,8 +10,8 @@ from m5.user import User
 # he wants through a command prompt. The commands are
 # kept really simple.
 
-u = User()
-u.authenticate()                # Log onto the company server
+# Log onto the company server
+u = Messenger('m-134', 'PASSWORD')
 
 if u.is_returning:              # Don't mine data twice: resurrect existing data
     u.load_data()

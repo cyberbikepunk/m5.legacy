@@ -1,9 +1,9 @@
-from requests import Session
+from requests import Session, Request
 from pickle import load, dump
 from os.path import isfile
 from datetime import datetime
 from pprint import PrettyPrinter
-# from getpass import getpass TODO Wh
+from getpass import getpass
 
 from m5.miner import Miner
 
@@ -13,24 +13,47 @@ def date_string(date):
     return date.strftime('%d-%m-%Y')
 
 
-class User:
-    """ The User class methods manage user information and activity. """
+class Messenger:
+    """ The Messenger class methods manage user information and activity. """
 
-    def __init__(self):
-        """ Initialize class attributes. """
-        self._username = ''
-        self._password = ''
-        self.is_active = True
+    def __init__(self, username='', password=''):
+        """  Authenticate the user and fetch local data if any. """
+
+        self._username = username
+        self._password = password
         self._session = None
-        self.mined = set()
+        self._miners = []
         self.data = []
         self._log = []
 
-    @property
-    def _server(self):
-        """ I work as a bike messenger for 'messemger.de' and this where my data is stored.
-        :return: (str) The company data server """
-        return 'http://bamboo-mec.de/'
+        # The remote server where the data is stored:
+        self._server = 'http://bamboo-mec.de/'
+        self._authenticate(self._username, self._password)
+
+    def _authenticate(self, username='', password=''):
+        """ Make login attempts until successful. """
+
+        if not username:
+            self._username = input('Enter username:')
+        if not password:
+            self._password = getpass('Enter password:')
+
+        login_url = self._server + 'll.php5'
+        credentials = {'username': self._username, 'password': self._password}
+        request = Request('post', login_url, params=credentials).prepare()
+
+        self._session = Session()
+        # Pretend we're browsing
+        headers = {'user-agent': 'Mozilla/5.0'}
+        self._session.headers.update(headers)
+
+        # Make a login attempt
+        # TODO request error handling
+        response = self._session.send(request, timeout=10.0)
+        if not response.ok:
+            self._authenticate()
+        else:
+            self._rec('Welcome {}! You are logged in.', self._username)
 
     @property
     def _userlog(self):
@@ -52,29 +75,6 @@ class User:
         else:
             self._rec('Welcome {}! You are a newbie.', self._username)
             return False
-
-    def authenticate(self):
-        """ Log onto the company server. """
-
-        # Build the request
-        login_url = self._server + 'll.php5'
-        self._username = 'm-134'                # input('Enter username: ')
-        self._password = 'PASSWORD'             # getpass('Enter password: ')
-
-        # Open a session like we're browsing by hand
-        self._session = Session()
-        self._session.headers.update({'user-agent': 'Mozilla/5.0 Firefox/31.0'})
-        credentials = {'username': self._username, 'password': self._password}
-
-        # And shoot off the login post request...
-        response = self._session.post(login_url, credentials, timeout=10.0)
-
-        # We detect success by looking for the word success in german.
-        if response.text.find('erfolgreich') > 0:
-            self._rec('Hello {}, you are now logged in!', self._username)
-        else:
-            self._rec('Invalid username or password... try again!')
-            self.authenticate()
 
     def load_data(self):
         """ Load pickled user data from file. """
@@ -98,7 +98,7 @@ class User:
 
         with open(self._userlog, 'a') as f:
             f.write('\n'.join(self._log) + '\n\n')
-            self._rec('User log saved to {}', self._userlog)
+            self._rec('Messenger log saved to {}', self._userlog)
 
     def _rec(self, message, *args):
         """ Write to user log and print to screen.

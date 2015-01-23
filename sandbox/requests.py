@@ -33,7 +33,7 @@ url = "http://www.webmalt.com"
 post_data_dictionary = {"firstname":"Devin", "lastname":"Cornell"}
 
 #sets the user agent header
-http_headers = {"User-Agent":"Mozilla/4.0 (compatible; MSIE 5.5;Windows NT)"}
+http_headers = {"Messenger-Agent":"Mozilla/4.0 (compatible; MSIE 5.5;Windows NT)"}
 
 post_data_encoded = urllib.urlencode(post_data_dictionary)
 request_object = urllib2.Request(url, post_data_encoded, http_headers)
