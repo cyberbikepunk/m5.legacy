@@ -5,7 +5,7 @@ from datetime import datetime
 from pprint import PrettyPrinter
 # from getpass import getpass TODO Wh
 
-from miner import Miner
+from m5.miner import Miner
 
 
 def date_string(date):
