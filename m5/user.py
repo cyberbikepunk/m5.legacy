@@ -8,7 +8,7 @@ from datetime import datetime
 from pprint import PrettyPrinter
 from getpass import getpass
 
-from m5.miner import Miner
+from m5.miner import MessengerMiner
 
 
 class Messenger:
@@ -65,7 +65,7 @@ class Messenger:
         if not response.ok:
             self._authenticate()
         else:
-            self._print('Welcome {}! You are logged in.', self._username)
+            self._print('You are logged in.')
 
     @property
     def _is_returning(self) -> bool:
@@ -106,8 +106,8 @@ class Messenger:
 
         message = message.format(*args)
         timestamp = '{:%Y-%m-%d %H:%M:%S %fms}'.format(datetime.now())
-        formatted_message = self._username + ' | ' + timestamp + ' | ' + message
-        print(formatted_message)
+        tagged_message = self._username + ' | ' + timestamp + ' | ' + message
+        print(tagged_message)
 
     def quit(self):
         """ Make a clean exit from the program. """
@@ -129,7 +129,7 @@ class Messenger:
         if response.status_code == 302:
             self._print('Logged out successfully. Goodbye!')
 
-        self._session.close()
+        # self._session.close()
 
     def prompt(self, input_string=None):
         """ Prompt the user for quit or a public method. """
@@ -138,7 +138,8 @@ class Messenger:
             try:
                 input_string = input('Enter "method()" or "quit()":  ')
             except (KeyboardInterrupt, SystemExit):
-                # Avoid corrupting data: exit cleanly
+                # Avoid corrupting data:
+                # exit cleanly every time
                 print('\n')
                 self.quit()
             else:
@@ -164,7 +165,7 @@ class Messenger:
         date = datetime.strptime(date_string, '%d-%m-%Y')
 
         # Turn the engine on
-        m = Miner(date=date, session=self._session, server=self._server)
+        m = MessengerMiner(date=date, session=self._session, server=self._server)
 
         # Been there, done that
         # TODO Check the existence of a miner instance

@@ -4,14 +4,10 @@ import re
 from bs4 import BeautifulSoup
 
 
-class Miner:
-    """
-    The Miner class methods scrape off bike messenger data from the company server. They also package
-    it up nicely so we can play with it later without inflicting upon ourselves any unnecessery pain.
-    """
+class MessengerMiner:
+    """ The MessengerMiner class handles scraping off data from the company server. """
 
-    # We use the BeautifulSoup4 module to extract information within specific html tags.
-    # Yes... before we try and swallow a web page, we first cut it up into small pieces.
+    # Where the information hides on a job's web page
     _TAGS = dict(
         address={'name': 'div', 'attrs': {'data-collapsed': 'true'}},
         header={'name': 'h2', 'attrs': None},
@@ -20,8 +16,7 @@ class Miner:
         prices={'name': 'tbody', 'attrs': None}
     )
 
-    # Each field has a blueprint. Where does it hide? What is it? Is it always there?
-    # We bundle fields according to what sub-section they're in.
+    # Each field has a regex blueprint.
     _BLUEPRINTS = dict(
         address=dict(
             company={'line': 1, 'pattern': r'(.*)', 'optional': False},
@@ -49,9 +44,9 @@ class Miner:
     def __init__(self, date, session, server):
         """ Initialize class attributes.
 
-        :param date: (datetime obj) the date to be mined
-        :param session: (request.session obj) the current http session
-        :param server: (str) the server url
+        :param date: the date object to be mined
+        :param session: the current http session object
+        :param server: the server url
         """
         self.date = date
         self._session = session
@@ -59,9 +54,10 @@ class Miner:
         self.debug_messages = []
         self.raw_data = None
 
-    def fetch_jobs(self):
+    def fetch_jobs(self) -> set:
         """ Return unique 'uuid' request parameters for every job on that day.
-        :return: (set) A set of 'uuid' strings
+
+        :return: A set of 'uuid' strings
         """
 
         # Prepare the request and shoot
@@ -74,7 +70,7 @@ class Miner:
         jobs = re.findall(pattern, response.text)
 
         # Each uuid appears twice on the page
-        # (two links). Dump the duplicates.
+        # (two links), so dump the duplicates.
         return set(jobs)
 
     def get_job(self, job):
@@ -107,7 +103,7 @@ class Miner:
             f.write(job_soup.prettify())
             f.close()
 
-    def _scrape_subset(self, fields, soup_subset):
+    def _scrape_subset(self, fields, soup_subset) -> dict:
         """
         Scrape a sub-section of the html document. The document format very is unreliable:
         the number of lines in each section varies and the number of fields on each line
@@ -117,7 +113,7 @@ class Miner:
 
         :param fields: (dict) the fields to be collected
         :param soup_subset: (tag object) the contents of a tag in soup form
-        :return: (dict) field name/value pairs
+        :return: field name/value pairs
         """
 
         # Split the inner contents of an html tag into a list of lines
@@ -136,6 +132,7 @@ class Miner:
                     # assign a dictionary key anyways!
                     collected[name] = None
                 else:
+                    # TODO Add a warning here
                     # If we fail to scrape a field that we actually need: ouch!
                     # Don't assign any key and make sure we give some feedback.
                     self._store_debug_message(name, item, contents)
@@ -145,9 +142,9 @@ class Miner:
     def scrape_job(self, soup):
         """
         Scrape the shit out of a job's web page using BeautifulSoup and a little regex.
-        In three steps: first jobs details, then the price table and finally the addresses.
-        Job details and prices are returned as dictionaries, addresses as a list of dictionaries.
-        Each dictionary contains scraped field name/value pairs. Values are returned as raw strings.
+        In three steps: first jobs details, then the price table, then addresses. Job
+        details and prices are returned as dictionaries, addresses as a list of
+        dictionaries. Values are returned as raw strings.
 
         :param soup: (tag object) the job's web page in soup form
         :return: (tuple) details, prices, addresses
@@ -168,24 +165,28 @@ class Miner:
         prices = self._scrape_prices(soup_subset)
 
         # Scrape an arbitrary number of addresses
-        soup_subsets = soup.find_all(name=self._TAGS['address']['name'], attrs=self._TAGS['address']['attrs'])
+        soup_subsets = soup.find_all(
+            name=self._TAGS['address']['name'],
+            attrs=self._TAGS['address']['attrs']
+        )
+
         addresses = list()
         for soup_subset in soup_subsets:
             address = self._scrape_subset(self._BLUEPRINTS['address'], soup_subset)
             addresses.append(address)
 
-        # Package the whole thing up nicely inside a tuple
-        raw_data = details, prices, addresses
+        # Package it up
+        raw_data = dict(details=details, prices=prices, addresses=addresses)
         return raw_data
 
-    def _scrape_prices(self, soup_subset):
+    def _scrape_prices(self, soup_subset) -> dict:
         """
         Scrape off the 'prices' table at the bottom of the page. This section
         is scraped seperately because it's already neatly formatted as a table.
         ... and also cause it's kinda fun to do use 'zip', 'pop' and 'keys'.
 
         :param soup_subset: (tag object) cleaned up html
-        :return: (dict) field name/value pairs
+        :return: field name/value pairs
         """
         # The table is scraped as a one-dimensional list
         # of cells but we want it in dictionary format.
