@@ -37,9 +37,6 @@ class Messenger:
 
         # Data that has already been mined is stored locally
         self._userdata = '../users/{}.pkl'.format(self._username)
-        self._userlog = '../users/{}.log'.format(self._username)
-
-        # Go and fetch it
         if self._is_returning:
             self._load_data()
 
@@ -94,13 +91,6 @@ class Messenger:
             # Pickle with the highest protocol. Whatever that is...
             dump(self, f, -1)
             self._print('Current data saved to {}.', self._userdata)
-
-    def save_log(self):
-        """ Append all current log messages to user log file. """
-
-        with open(self._userlog, 'a') as f:
-            f.write('\n'.join(self._log) + '\n\n')
-            self._print('Messenger log saved to {}', self._userlog)
 
     def _print(self, message, *args):
         """ Print a status message to screen.
