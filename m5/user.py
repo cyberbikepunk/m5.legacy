@@ -1,4 +1,4 @@
-""" User related classes. """
+""" User classes and related stuff. """
 
 
 from requests import Session, Request
@@ -83,16 +83,23 @@ class Messenger:
 
         # TODO Handle file I/O errors properly
         with open(self._datafile, 'rb') as f:
-            self.data = load(f)
+            objects = load(f)
             self._print('Loaded user data successfully')
+
+        # Unpack the pickled object
+        self._miners = objects['miners']
+        self._data = objects['data']
 
     def save(self):
         """ Pickle the user data to file. Yep, that our database! """
 
+        # Pack up for pickling
+        objects = {'miners': self._miners, 'data': self._data}
+
         with open(self._datafile, 'wb+') as f:
-            # Pickle with the highest protocol. Whatever that is...
-            dump(self, f, -1)
-            self._print('Current data saved to {}.', self._datafile)
+            # Pickle with the highest protocol
+            dump(objects, f, -1)
+            self._print('Saved user data successfully')
 
     def _print(self, message, *args):
         """ Print a status message to screen. """
@@ -104,6 +111,7 @@ class Messenger:
 
     def quit(self):
         """ Make a clean exit from the program. """
+
         self.save()
         self._logout()
         exit(0)
@@ -114,12 +122,12 @@ class Messenger:
         url = self._server + 'index.php5'
         payload = {'logout': '1'}
         response = self._session.get(url, params=payload)
-        # We get redirected once
+        # We have been redirected once
         response = response.history[0]
 
         # Last words before we exit
         if response.status_code == 302:
-            self._print('Successfully logged out. Goodbye!')
+            self._print('Logged out successfully. Goodbye!')
 
         self._session.close()
 
@@ -127,13 +135,24 @@ class Messenger:
         """ Prompt the user for quit or a public method. """
 
         if not input_string:
-            input_string = input('Enter "public_method(...)" or "quit()":  ')
-        try:
-            exec('self.' + input_string)
-        except (SyntaxError, ValueError, TypeError):
-            self.prompt()
-        except KeyboardInterrupt:
-            self.quit()
+            try:
+                input_string = input('Enter "method()" or "quit()":  ')
+            except (KeyboardInterrupt, SystemExit):
+                # Avoid corrupting data: exit cleanly
+                print('\n')
+                self.quit()
+            else:
+                try:
+                    exec('self.' + input_string)
+                except (
+                        SyntaxError,
+                        ValueError,
+                        TypeError,
+                        AttributeError,
+                        NameError
+                ) as error:
+                    print(error.__class__.__name__ + ' | ' + error.msg)
+                    self.prompt()
 
     def mine(self, date_string):
         """  If that date hasn't been mined before, mine it!

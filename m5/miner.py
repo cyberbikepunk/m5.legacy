@@ -1,3 +1,5 @@
+""" Miner classes and related stuff. """
+
 import re
 from bs4 import BeautifulSoup
 
