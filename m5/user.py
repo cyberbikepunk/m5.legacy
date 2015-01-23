@@ -66,17 +66,17 @@ class Messenger:
         if not response.ok:
             self._authenticate()
         else:
-            self._rec('Welcome {}! You are logged in.', self._username)
+            self._print('Welcome {}! You are logged in.', self._username)
 
     @property
     def _is_returning(self) -> bool:
         """ True if the user has local data. """
 
         if isfile(self._userdata):
-            self._rec('You are a returning user.')
+            self._print('You are a returning user.')
             return True
         else:
-            self._rec('You are a new user.')
+            self._print('You are a new user.')
             return False
 
     def _load_data(self):
@@ -85,7 +85,7 @@ class Messenger:
         # TODO Handle file I/O errors properly
         with open(self._userdata, 'rb') as f:
             self.data = load(f)
-            self._rec('Loaded user data successfully')
+            self._print('Loaded user data successfully')
 
     def save_data(self):
         """ Pickle the user data to file. Yep, that our database! """
@@ -93,20 +93,20 @@ class Messenger:
         with open(self._userdata, 'wb') as f:
             # Pickle with the highest protocol. Whatever that is...
             dump(self, f, -1)
-            self._rec('Current data saved to {}.', self._userdata)
+            self._print('Current data saved to {}.', self._userdata)
 
     def save_log(self):
         """ Append all current log messages to user log file. """
 
         with open(self._userlog, 'a') as f:
             f.write('\n'.join(self._log) + '\n\n')
-            self._rec('Messenger log saved to {}', self._userlog)
+            self._print('Messenger log saved to {}', self._userlog)
 
-    def _rec(self, message, *args):
-        """ Write to user log and print to screen.
+    def _print(self, message, *args):
+        """ Print a status message to screen.
 
-        :param message: (str) Log message strings with positional curly brackets
-        :param *args: (str) Whatever arguments we want to insert
+        :param message: (str) Log message with positional curly brackets
+        :param *args: (str) Message arguments
         """
 
         # Make sure the log message is unambiguous
@@ -128,7 +128,7 @@ class Messenger:
 
         # Last words before we exit
         if response.status == 302:
-            self._rec('Successfully logged out. Goodbye!')
+            self._print('Successfully logged out. Goodbye!')
 
     def prompt_date(self):
         """ Prompt for 'quit' or a date in the format 'dd.mm.yyyy'.
@@ -163,7 +163,7 @@ class Messenger:
 
         # Been there, done that
         if date in self.mined:
-            self._rec('{} has already been mined', date_string)
+            self._print('{} has already been mined', date_string)
 
         else:
             # Go browse the web summary page for that day
@@ -172,7 +172,7 @@ class Messenger:
 
             # I don't work on weekends
             if not jobs:
-                self._rec('No jobs found for {}', date_string)
+                self._print('No jobs found for {}', date_string)
 
             else:
                 for j in jobs:
@@ -193,7 +193,7 @@ class Messenger:
                 self.mined.add(date)
 
                 # TODO We're never gonna scrape with a 100% success rate, but let's do better next time!
-                self._rec('Mined: {} successfully!', date_string)
+                self._print('Mined: {} successfully!', date_string)
                 for message in m.debug_messages:
-                    self._rec(message)
+                    self._print(message)
 
