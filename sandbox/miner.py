@@ -1,25 +1,24 @@
+""" This submodule contains Miner classes and related stuff. """
+
 import re
 from bs4 import BeautifulSoup
 
 
-class Miner:
-    """
-    The Miner class methods scrape off bike messenger data from the company server. They also package
-    it up nicely so we can play with it later without inflicting upon ourselves any unnecessery pain.
-    """
+class MessengerMiner:
+    """ The MessengerMiner class handles scraping off data from the company server. """
 
-    # We use the BeautifulSoup4 module to extract information within specific html tags.
-    # Yes... before we try and swallow a web page, we first cut it up into small pieces.
+    # BeautifulSoup4 helps us cut up web pages into small pieces.
+    # Here are the pieces where the data hides.
     _TAGS = dict(
         address={'name': 'div', 'attrs': {'data-collapsed': 'true'}},
         header={'name': 'h2', 'attrs': None},
-        client={'name': 'h4', 'attrs': None},
-        itinerary={'name': 'p', 'attrs': None},
+        client={'name': 'h4', 'attrs': {'style:': 'margin-bottom: 5px'}},
+        itinerary={'name': 'p', 'attrs': {'style:': 'margin-top: 5px'}},
         prices={'name': 'tbody', 'attrs': None}
     )
 
-    # Each field has a blueprint. Where does it hide? What is it? Is it always there?
-    # We bundle fields according to what sub-section they're in.
+    # Each field has a regex blueprint. Fields tagged 'optional' are
+    # sometime on and sometimes not!
     _BLUEPRINTS = dict(
         address=dict(
             company={'line': 1, 'pattern': r'(.*)', 'optional': False},
@@ -54,11 +53,11 @@ class Miner:
         self.date = date
         self._session = session
         self._server = server
-        self.debug_messages = []
+        self.debug_messages = list()
         self.raw_data = None
 
     def fetch_jobs(self):
-        """ Return unique 'uuid' request parameters for every job on that day.
+        """ Return a unique 'uuid' request parameter for every job on that day.
         :return: (set) A set of 'uuid' strings
         """
 
@@ -79,7 +78,7 @@ class Miner:
         """ Browse the web page for that day and return a beautiful soup.
 
         :param job: (str) the job's uuid request parameter
-        :return: (tag object) cleaned up html as produced by bs4
+        :return (tag object) cleaned up html as produced by bs4
         """
 
         # Prepare the request and shoot
@@ -87,22 +86,22 @@ class Miner:
         payload = {'status': 'delivered', 'uuid': job}
         response = self._session.get(url, params=payload)
 
-        # Turn it into a digestible soup
-        # and filter out the tasty stuff
+        # Turn dirty html text into a digestible soup
+        # then squeeze out the really tasty stuff
         soup = BeautifulSoup(response.text)
         return soup.find(id='order_detail')
 
-    def _save_job(self, job_soup, job_uuid):
-        """ From the soup, prettify the html and save it to file.
+    def _save_job(self, soup, uuid):
+        """ From a soup, prettify the html and save it to file.
 
-        :param job_soup: (tag object) the web page in soup form
-        :param job_uuid: (str) the job's identifier
+        :param soup: (tag object) the web page in soup form
+        :param uuid: (str) the job's identifier
         """
 
         # TODO Current folder for now: user folders in the future
-        f = self.date.strftime('%d.%m.%Y') + '-' + job_uuid + '.html'
+        f = self.date.strftime('%d.%m.%Y') + '-' + uuid + '.html'
         with open(f, 'w') as f:
-            f.write(job_soup.prettify())
+            f.write(soup.prettify())
             f.close()
 
     def _scrape_subset(self, fields, soup_subset):
@@ -114,7 +113,7 @@ class Miner:
         Failure to collect information is not a show-stopper but we should know about it!
 
         :param fields: (dict) the fields to be collected
-        :param soup_subset: (tag object) the contents of a tag in soup form
+        :param soup_subset: (tag object) the inner contents of a tag in soup form
         :return: (dict) field name/value pairs
         """
 
@@ -130,12 +129,12 @@ class Miner:
                 collected[name] = match.group(1)
             else:
                 if item['optional']:
-                    # If we fail to scrape the field but the field is optional:
-                    # assign a dictionary key anyways!
+                    # We fail to scrape the field but it turns out
+                    # to be optional: assign a dictionary key anyways!
                     collected[name] = None
                 else:
-                    # If we fail to scrape a field that we actually need: ouch!
-                    # Don't assign any key and make sure we give some feedback.
+                    # We fail to scrape a field but we actually need it... ouch!
+                    # Don't assign any key and make sure we bubble up some feedback.
                     self._store_debug_message(name, item, contents)
 
         return collected
@@ -143,30 +142,36 @@ class Miner:
     def scrape_job(self, soup):
         """
         Scrape the shit out of a job's web page using BeautifulSoup and a little regex.
-        In three steps: first jobs details, then the price table and finally the addresses.
+        In three steps: first the jobs details, then the price table and finally the addresses.
         Job details and prices are returned as dictionaries, addresses as a list of dictionaries.
         Each dictionary contains scraped field name/value pairs. Values are returned as raw strings.
 
         :param soup: (tag object) the job's web page in soup form
-        :return: (tuple) details, prices, addresses
+        :return details, prices, addresses
+        :rtype tuple
         """
 
-        # Where the all collected fields are stored
+        # STEP 1/3: scrape job details one section at a time
         details = dict()
-        # Scrape chosen sections of the document
         subsets = ['header', 'client', 'itinerary']
+
         for subset in subsets:
             soup_subset = soup.find_next(name=self._TAGS[subset]['name'])
             fields_subset = self._scrape_subset(self._BLUEPRINTS[subset], soup_subset)
-            # Put all sections in the same basket
+
+            # Put all collected fields in the same basket
             details.update(fields_subset)
 
-        # Scrape the price table at the bottom of the page
+        # STEP 2/3: scrape the price table at the bottom of the page
         soup_subset = soup.find(self._TAGS['prices']['name'])
         prices = self._scrape_prices(soup_subset)
 
-        # Scrape an arbitrary number of addresses
-        soup_subsets = soup.find_all(name=self._TAGS['address']['name'], attrs=self._TAGS['address']['attrs'])
+        # STEP 3/3: scrape an arbitrary number of addresses
+        # Like I sai
+        name = self._TAGS['address']['name']
+        attrs = self._TAGS['address']['attrs']
+        soup_subsets = soup.find_all(name=name, attrs=attrs)
+
         addresses = list()
         for soup_subset in soup_subsets:
             address = self._scrape_subset(self._BLUEPRINTS['address'], soup_subset)
@@ -180,7 +185,6 @@ class Miner:
         """
         Scrape off the 'prices' table at the bottom of the page. This section
         is scraped seperately because it's already neatly formatted as a table.
-        ... and also cause it's kinda fun to do use 'zip', 'pop' and 'keys'.
 
         :param soup_subset: (tag object) cleaned up html
         :return: (dict) field name/value pairs
@@ -200,7 +204,6 @@ class Miner:
             ('EmpfangsbestÃ¤t.',    'fax_confirm'),
             ('Wartezeit min.',      'waiting_time')
         ]
-
         for old, new in keys:
             if old in price_table:
                 price_table[new] = price_table.pop(old)
@@ -213,13 +216,12 @@ class Miner:
         return price_table
 
     def package_job(self, raw_data):
-        # TODO Data pre-processing comes here!
+        """ Pre-process and package up the data intelligently """
+        # TODO Raw data pre-processing goes here!
         self.raw_data = raw_data
 
     def _store_debug_message(self, name: str, item, contents):
-        """
-        Save a debug message showing the context in which the scraping went wrong.
-        And while we're at it, save a copy of the html file for later inspection.
+        """ Save a debug message showing the context in which the scraping went wrong.
 
         :param name: (str) the name of the field
         :param item: (dict) the field information
