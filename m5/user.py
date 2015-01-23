@@ -8,13 +8,18 @@ from getpass import getpass
 from m5.miner import Miner
 
 
-def date_string(date):
-    """ :return: (str) A pretty date. """
-    return date.strftime('%d-%m-%Y')
-
-
 class Messenger:
-    """ The Messenger class methods manage user information and activity. """
+    """
+    The Messenger class manages user activity for couriers freelancing
+    for Messenger (http://messenger.de). This is the default user class.
+    It can be extended to other courier companies.
+
+    Public methods (API):
+        - mine('dd.mm.yyyy'): mine one day of data
+        - save(): pickle the user object
+        - quit(): make a clean exit
+        - more to come...
+    """
 
     def __init__(self, username='', password=''):
         """  Authenticate the user and fetch local data if any. """
@@ -154,12 +159,14 @@ class Messenger:
     def mine(self, date):
         """ If that date hasn't received the treatment before, scrape it! """
 
+        date_string = date.strftime('%d-%m-%Y')
+
         # Switch on the engine
         m = Miner(date=date, session=self._session, server=self._server)
 
         # Been there, done that
         if date in self.mined:
-            self._rec('{} has already been mined', date_string(date))
+            self._rec('{} has already been mined', date_string)
 
         else:
             # Go browse the web summary page for that day
@@ -168,7 +175,7 @@ class Messenger:
 
             # I don't work on weekends
             if not jobs:
-                self._rec('No jobs found for {}', date_string(date))
+                self._rec('No jobs found for {}', date_string)
 
             else:
                 for j in jobs:
@@ -189,7 +196,7 @@ class Messenger:
                 self.mined.add(date)
 
                 # TODO We're never gonna scrape with a 100% success rate, but let's do better next time!
-                self._rec('Mined: {} successfully!', date_string(date))
+                self._rec('Mined: {} successfully!', date_string)
                 for message in m.debug_messages:
                     self._rec(message)
 
