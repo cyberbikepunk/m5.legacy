@@ -1,18 +1,17 @@
-#!/usr/bin/python
+""" A main script for the m5 module
 
-__author__ = 'Loic Jounot (loic@cyberpunk.bike)'
+This script is intended for my private use while I'm developing.
+The idea is to log myself onto the company server and let me play
+with the module API through a command prompt. Once I'm happy with it,
+I'll put it up on my server and write a web interface.
+"""
 
-from m5.user import User
+
+from m5 import user
 
 
-# The general idea is to help the bike messenger log on
-# the company server. Once that's done, we let him do what
-# he wants through a command prompt. The commands are
-# kept really simple.
-
-u = User()
-u.authenticate()                # Log onto the company server
-
+u = user.Messenger('m-134', 'PASSWORD')
+exit(0)
 if u.is_returning:              # Don't mine data twice: resurrect existing data
     u.load_data()
 
