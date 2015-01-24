@@ -2,8 +2,8 @@
 
 This script is intended for my private use while I'm developing.
 The idea is to log myself onto the company server and let me play
-with the module API through a command prompt. Once I'm happy with it,
-I'll put it on my server and write a client-side web interface for it.
+with the module API through a command prompt. Once I'm happy,
+I'll write a client-side web interface.
 """
 
 

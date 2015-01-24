@@ -93,7 +93,7 @@ class Messenger:
     def save(self):
         """ Pickle the user data to file. Yep, that our database! """
 
-        # Pack up for pickling
+        # Package up for pickling
         objects = {'miners': self._miners, 'data': self._data}
 
         with open(self._datafile, 'wb+') as f:
@@ -156,7 +156,8 @@ class Messenger:
                     self.prompt()
 
     def mine(self, date_string):
-        """  If that date hasn't been mined before, mine it!
+        """
+        If that date hasn't been mined before, mine it!
 
         :param date_string: one day in the format dd-mm-yyyy
         """
