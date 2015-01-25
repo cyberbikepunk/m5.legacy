@@ -105,7 +105,6 @@ class MessengerMiner:
         :param filename: (str) the job's identifier
         """
 
-        # TODO Current folder for now: user folders in the future
         path = 'output/' + self.date.strftime('%d-%m-%Y') + '-' + filename + '.html'
         with open(path, 'w') as f:
             f.write(soup.prettify())
@@ -133,6 +132,7 @@ class MessengerMiner:
         contents = list(soup_subset.stripped_strings)
 
         collected = dict()
+
         # Collect each field one by one, even if that
         # means returning to the same line several times.
         for name, item in fields.items():
@@ -142,7 +142,7 @@ class MessengerMiner:
             else:
                 if item['optional']:
                     # If we fail to scrape the field but the field is optional:
-                    # assign a dictionary key anyways!
+                    # assign the dictionary key anyways:
                     collected[name] = None
                 else:
                     # TODO Raise a warning when a non-optional field is not found
