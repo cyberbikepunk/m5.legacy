@@ -128,7 +128,7 @@ class MessengerMiner:
         # a robust set of data. Failure to collect information is not a
         # show-stopper but we should know about it!
 
-        # Split the inner contents of an html tag into a list of lines
+        # Split the inner contents of the html tag into a list of lines
         contents = list(soup_subset.stripped_strings)
 
         collected = dict()
