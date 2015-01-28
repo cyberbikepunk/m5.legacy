@@ -8,7 +8,7 @@ from datetime import datetime
 from pprint import PrettyPrinter
 from getpass import getpass
 
-from m5.miner import Miner
+from m5.miner import MessengerMiner
 
 
 class Messenger:
@@ -24,9 +24,11 @@ class Messenger:
         - more to come...
     """
 
+    _DEBUG = True
+
     def __init__(self, username='', password=''):
         """  Authenticate the user and fetch local data if any. """
-        
+
         self._username = username
         self._password = password
         self._session = None
@@ -52,20 +54,19 @@ class Messenger:
 
         login_url = self._server + 'll.php5'
         credentials = {'username': self._username, 'password': self._password}
-        request = Request('post', login_url, params=credentials).prepare()
 
         self._session = Session()
         # Pretend we're browsing
-        headers = {'user-agent': 'Mozilla/5.0'}
+        headers = {'user-agent': 'Mozilla/5.0 Firefox/31.0'}
         self._session.headers.update(headers)
 
         # Make a login attempt
         # TODO request error handling
-        response = self._session.send(request, timeout=10.0)
+        response = self._session.post(login_url, credentials)
         if not response.ok:
             self._authenticate()
         else:
-            self._print('Welcome {}! You are logged in.', self._username)
+            self._print('You are logged in.')
 
     @property
     def _is_returning(self) -> bool:
@@ -93,7 +94,7 @@ class Messenger:
     def save(self):
         """ Pickle the user data to file. Yep, that our database! """
 
-        # Pack up for pickling
+        # Package up for pickling
         objects = {'miners': self._miners, 'data': self._data}
 
         with open(self._datafile, 'wb+') as f:
@@ -106,8 +107,8 @@ class Messenger:
 
         message = message.format(*args)
         timestamp = '{:%Y-%m-%d %H:%M:%S %fms}'.format(datetime.now())
-        formatted_message = self._username + ' | ' + timestamp + ' | ' + message
-        print(formatted_message)
+        tagged_message = self._username + ' | ' + timestamp + ' | ' + message
+        print(tagged_message)
 
     def quit(self):
         """ Make a clean exit from the program. """
@@ -134,16 +135,24 @@ class Messenger:
     def prompt(self, input_string=None):
         """ Prompt the user for quit or a public method. """
 
+        # FIXME the following control flow works but is wrong
         if not input_string:
             try:
-                input_string = input('Enter "method()" or "quit()":  ')
+                if self._DEBUG:
+                    input_string = 'mine("18-12-2014")'
+                else:
+                    input_string = input('Enter "method()" or "quit()":  ')
+
             except (KeyboardInterrupt, SystemExit):
-                # Avoid corrupting data: exit cleanly
+                # Avoid corrupting data:
+                # exit cleanly every time
                 print('\n')
                 self.quit()
             else:
                 try:
                     exec('self.' + input_string)
+                    if self._DEBUG:
+                        self.quit()
                 except (
                         SyntaxError,
                         ValueError,
@@ -155,7 +164,8 @@ class Messenger:
                     self.prompt()
 
     def mine(self, date_string):
-        """  If that date hasn't been mined before, mine it!
+        """
+        If that date hasn't been mined before, mine it!
 
         :param date_string: one day in the format dd-mm-yyyy
         """
@@ -164,7 +174,7 @@ class Messenger:
         date = datetime.strptime(date_string, '%d-%m-%Y')
 
         # Turn the engine on
-        m = Miner(date=date, session=self._session, server=self._server)
+        m = MessengerMiner(date=date, session=self._session, server=self._server)
 
         # Been there, done that
         # TODO Check the existence of a miner instance
@@ -193,6 +203,7 @@ class Messenger:
                     # We wanna see results!
                     pp = PrettyPrinter()
                     pp.pprint(m.raw_data)
+                    print('\n')
 
                 # Now do the book-keeping
                 self._miners.add(m)
