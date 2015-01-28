@@ -1,165 +1,186 @@
-from requests import Session
+""" User classes and related stuff. """
+
+
+from requests import Session, Request
 from pickle import load, dump
 from os.path import isfile
 from datetime import datetime
 from pprint import PrettyPrinter
-# from getpass import getpass TODO Wh
+from getpass import getpass
 
-from m5.miner import Miner
-
-
-def date_string(date):
-    """ :return: (str) A pretty date. """
-    return date.strftime('%d-%m-%Y')
+from m5.miner import MessengerMiner
 
 
-class User:
-    """ The User class methods manage user information and activity. """
+class Messenger:
+    """
+    The Messenger class manages user activity for couriers freelancing
+    for Messenger (http://messenger.de). This is the default user class.
+    It can be extended to other courier companies.
 
-    def __init__(self):
-        """ Initialize class attributes. """
-        self._username = ''
-        self._password = ''
-        self.is_active = True
+    Public methods (API):
+        - mine('dd.mm.yyyy'): mine one day of data
+        - save(): pickle the user object
+        - quit(): make a clean exit
+        - more to come...
+    """
+
+    _DEBUG = True
+
+    def __init__(self, username='', password=''):
+        """  Authenticate the user and fetch local data if any. """
+
+        self._username = username
+        self._password = password
         self._session = None
-        self.mined = set()
-        self.data = []
-        self._log = []
+        self._miners = set()
+        self._data = list()
 
-    @property
-    def _server(self):
-        """ I work as a bike messenger for 'messemger.de' and this where my data is stored.
-        :return: (str) The company data server """
-        return 'http://bamboo-mec.de/'
+        # The remote server where the company data is stored:
+        self._server = 'http://bamboo-mec.de/'
+        self._authenticate(self._username, self._password)
 
-    @property
-    def _userlog(self):
-        """ :return: (str) The relative path to the user log file. Here will do. """
-        return self._username + '.log'
+        # Data that has already been mined is stored locally
+        self._datafile = 'users/{}.pkl'.format(self._username)
+        if self._is_returning:
+            self._load()
 
-    @property
-    def _userdata(self):
-        """ :return: (str) The relative path to the user data file. """
-        return self._username + '.pkl'
+    def _authenticate(self, username='', password=''):
+        """ Make login attempts until successful. """
 
-    @property
-    def is_returning(self):
-        """ :return: (bool) True if we find out the user's already got a data file. """
+        if not username:
+            self._username = input('Enter username:')
+        if not password:
+            self._password = getpass('Enter password:')
 
-        if isfile(self._userdata):
-            self._rec('Data file {} found! You are a returning user.', self._userdata)
-            return True
-        else:
-            self._rec('Welcome {}! You are a newbie.', self._username)
-            return False
-
-    def authenticate(self):
-        """ Log onto the company server. """
-
-        # Build the request
         login_url = self._server + 'll.php5'
-        self._username = 'm-134'                # input('Enter username: ')
-        self._password = 'PASSWORD'             # getpass('Enter password: ')
-
-        # Open a session like we're browsing by hand
-        self._session = Session()
-        self._session.headers.update({'user-agent': 'Mozilla/5.0 Firefox/31.0'})
         credentials = {'username': self._username, 'password': self._password}
 
-        # And shoot off the login post request...
-        response = self._session.post(login_url, credentials, timeout=10.0)
+        self._session = Session()
+        # Pretend we're browsing
+        headers = {'user-agent': 'Mozilla/5.0 Firefox/31.0'}
+        self._session.headers.update(headers)
 
-        # We detect success by looking for the word success in german.
-        if response.text.find('erfolgreich') > 0:
-            self._rec('Hello {}, you are now logged in!', self._username)
+        # Make a login attempt
+        # TODO request error handling
+        response = self._session.post(login_url, credentials)
+        if not response.ok:
+            self._authenticate()
         else:
-            self._rec('Invalid username or password... try again!')
-            self.authenticate()
+            self._print('You are logged in.')
 
-    def load_data(self):
+    @property
+    def _is_returning(self) -> bool:
+        """ True if the user has local data. """
+
+        if isfile(self._datafile):
+            self._print('You are a returning user.')
+            return True
+        else:
+            self._print('You are a new user.')
+            return False
+
+    def _load(self):
         """ Load pickled user data from file. """
 
-        # We don't forgive file exceptions because we absolutely need access to past data.
-        # If we can't access it, let the program crash. Don't muddle up new data with old data.
-        with open(self._userdata, 'rb') as f:
-            self.data = load(f)
-            self._rec('Existing data loaded from {}.', self._userdata)
+        # TODO Handle file I/O errors properly
+        with open(self._datafile, 'rb') as f:
+            objects = load(f)
+            self._print('Loaded user data successfully')
 
-    def save_data(self):
+        # Unpack the pickled object
+        self._miners = objects['miners']
+        self._data = objects['data']
+
+    def save(self):
         """ Pickle the user data to file. Yep, that our database! """
 
-        with open(self._userdata, 'wb') as f:
-            # Pickle with the highest protocol. Whatever that is...
-            dump(self, f, -1)
-            self._rec('Current data saved to {}.', self._userdata)
+        # Package up for pickling
+        objects = {'miners': self._miners, 'data': self._data}
 
-    def save_log(self):
-        """ Append all current log messages to user log file. """
+        with open(self._datafile, 'wb+') as f:
+            # Pickle with the highest protocol
+            dump(objects, f, -1)
+            self._print('Saved user data successfully')
 
-        with open(self._userlog, 'a') as f:
-            f.write('\n'.join(self._log) + '\n\n')
-            self._rec('User log saved to {}', self._userlog)
+    def _print(self, message, *args):
+        """ Print a status message to screen. """
 
-    def _rec(self, message, *args):
-        """ Write to user log and print to screen.
-
-        :param message: (str) Log message strings with positional curly brackets
-        :param *args: (str) Whatever arguments we want to insert
-        """
-
-        # Make sure the log message is unambiguous
-        message = message.format (*args)
+        message = message.format(*args)
         timestamp = '{:%Y-%m-%d %H:%M:%S %fms}'.format(datetime.now())
-        entry = timestamp + ' | ' + message
+        tagged_message = self._username + ' | ' + timestamp + ' | ' + message
+        print(tagged_message)
 
-        # Send it both ways: screen and file
-        self._log.append(entry)
-        print(entry)
+    def quit(self):
+        """ Make a clean exit from the program. """
 
-    def logout(self):
-        """ Logout from the server. """
+        self.save()
+        self._logout()
+        exit(0)
 
-        # TODO Maybe I should also close the session?
+    def _logout(self):
+        """ Logout from the server and close the session. """
+
         url = self._server + 'index.php5'
         payload = {'logout': '1'}
         response = self._session.get(url, params=payload)
+        # We have been redirected once
+        response = response.history[0]
 
         # Last words before we exit
-        if response.status == 302:
-            self._rec('Successfully logged out. Goodbye!')
+        if response.status_code == 302:
+            self._print('Logged out successfully. Goodbye!')
 
-    def prompt_date(self):
-        """ Prompt for 'quit' or a date in the format 'dd.mm.yyyy'.
+        self._session.close()
 
-        :return: (datetime obj)
+    def prompt(self, input_string=None):
+        """ Prompt the user for quit or a public method. """
+
+        # FIXME the following control flow works but is wrong
+        if not input_string:
+            try:
+                if self._DEBUG:
+                    input_string = 'mine("18-12-2014")'
+                else:
+                    input_string = input('Enter "method()" or "quit()":  ')
+
+            except (KeyboardInterrupt, SystemExit):
+                # Avoid corrupting data:
+                # exit cleanly every time
+                print('\n')
+                self.quit()
+            else:
+                try:
+                    exec('self.' + input_string)
+                    if self._DEBUG:
+                        self.quit()
+                except (
+                        SyntaxError,
+                        ValueError,
+                        TypeError,
+                        AttributeError,
+                        NameError
+                ) as error:
+                    print(error.__class__.__name__ + ' | ' + error.msg)
+                    self.prompt()
+
+    def mine(self, date_string):
+        """
+        If that date hasn't been mined before, mine it!
+
+        :param date_string: one day in the format dd-mm-yyyy
         """
 
-        # TODO Replace me later with a web frontend interface
-        input_string = '19.12.2014'  # input('Enter a date or type "quit":')
+        # Convert the input to a datetime object
+        date = datetime.strptime(date_string, '%d-%m-%Y')
 
-        # This way towards the exit ->
-        if input_string == 'quit':
-            self.is_active = False
-
-        else:
-            try:
-                day = datetime.strptime(input_string, '%d.%m.%Y')
-            except ValueError:
-                # If the date cannot be read, prompt again!
-                print('Input format must be dd-mm-yy. Try again...')
-                self.prompt_date()
-            else:
-                return day
-
-    def mine(self, date):
-        """ If that date hasn't received the treatment before, scrape it! """
-
-        # Switch on the engine
-        m = Miner(date=date, session=self._session, server=self._server)
+        # Turn the engine on
+        m = MessengerMiner(date=date, session=self._session, server=self._server)
 
         # Been there, done that
-        if date in self.mined:
-            self._rec('{} has already been mined', date_string(date))
+        # TODO Check the existence of a miner instance
+        if False:
+            self._print('{} has already been mined', date_string)
+            del m
 
         else:
             # Go browse the web summary page for that day
@@ -168,7 +189,7 @@ class User:
 
             # I don't work on weekends
             if not jobs:
-                self._rec('No jobs found for {}', date_string(date))
+                self._print('No jobs found for {}', date_string)
 
             else:
                 for j in jobs:
@@ -181,15 +202,14 @@ class User:
 
                     # We wanna see results!
                     pp = PrettyPrinter()
-                    pp.pprint(m.raw_data[0])                    # Job details
-                    pp.pprint(m.raw_data[1])                    # Price table
-                    [pp.pprint(d) for d in m.raw_data[2]]       # Addresses
+                    pp.pprint(m.raw_data)
+                    print('\n')
 
                 # Now do the book-keeping
-                self.mined.add(date)
+                self._miners.add(m)
 
-                # TODO We're never gonna scrape with a 100% success rate, but let's do better next time!
-                self._rec('Mined: {} successfully!', date_string(date))
+                self._print('Mined: {} successfully!', date_string)
+                # If some fields failed to be scraped,
+                # return some feedback about the context
                 for message in m.debug_messages:
-                    self._rec(message)
-
+                    self._print(message)
