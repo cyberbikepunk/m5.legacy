@@ -65,7 +65,7 @@ class MessengerMiner:
         # Prepare the request and shoot
         url = self._server + 'll.php5'
         payload = {'status': 'delivered', 'datum': self.date.strftime('%d.%m.%Y')}
-        response = self._session.get(url, params=payload)
+        response = self._session.get(url, params=payload, allow_redirects=False)
 
         # Scrape the uuid parameters
         pattern = 'uuid=(\d{7})'

@@ -134,9 +134,11 @@ class Messenger:
     def prompt(self, input_string=None):
         """ Prompt the user for quit or a public method. """
 
+        # FIXME the following control flow is wrong
         if not input_string:
             try:
-                input_string = input('Enter "method()" or "quit()":  ')
+                input_string = 'mine("19-12-2014")'
+                # input_string = 'input('Enter "method()" or "quit()":  ')
             except (KeyboardInterrupt, SystemExit):
                 # Avoid corrupting data:
                 # exit cleanly every time
