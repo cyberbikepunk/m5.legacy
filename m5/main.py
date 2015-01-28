@@ -10,6 +10,6 @@ I'll write a client-side web interface.
 from m5 import user
 
 
-me = user.Messenger('m-134', 'PASSWORD')
+u = user.Messenger('m-134', 'PASSWORD')
 while True:
-    me.prompt()
+    u.prompt()

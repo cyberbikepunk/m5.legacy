@@ -24,9 +24,11 @@ class Messenger:
         - more to come...
     """
 
+    _DEBUG = True
+
     def __init__(self, username='', password=''):
         """  Authenticate the user and fetch local data if any. """
-        
+
         self._username = username
         self._password = password
         self._session = None
@@ -52,16 +54,15 @@ class Messenger:
 
         login_url = self._server + 'll.php5'
         credentials = {'username': self._username, 'password': self._password}
-        request = Request('post', login_url, params=credentials).prepare()
 
         self._session = Session()
         # Pretend we're browsing
-        headers = {'user-agent': 'Mozilla/5.0'}
+        headers = {'user-agent': 'Mozilla/5.0 Firefox/31.0'}
         self._session.headers.update(headers)
 
         # Make a login attempt
         # TODO request error handling
-        response = self._session.send(request, timeout=10.0)
+        response = self._session.post(login_url, credentials)
         if not response.ok:
             self._authenticate()
         else:
@@ -129,16 +130,19 @@ class Messenger:
         if response.status_code == 302:
             self._print('Logged out successfully. Goodbye!')
 
-        # self._session.close()
+        self._session.close()
 
     def prompt(self, input_string=None):
         """ Prompt the user for quit or a public method. """
 
-        # FIXME the following control flow is wrong
+        # FIXME the following control flow works but is wrong
         if not input_string:
             try:
-                input_string = 'mine("19-12-2014")'
-                # input_string = 'input('Enter "method()" or "quit()":  ')
+                if self._DEBUG:
+                    input_string = 'mine("18-12-2014")'
+                else:
+                    input_string = input('Enter "method()" or "quit()":  ')
+
             except (KeyboardInterrupt, SystemExit):
                 # Avoid corrupting data:
                 # exit cleanly every time
@@ -147,6 +151,8 @@ class Messenger:
             else:
                 try:
                     exec('self.' + input_string)
+                    if self._DEBUG:
+                        self.quit()
                 except (
                         SyntaxError,
                         ValueError,
@@ -197,6 +203,7 @@ class Messenger:
                     # We wanna see results!
                     pp = PrettyPrinter()
                     pp.pprint(m.raw_data)
+                    print('\n')
 
                 # Now do the book-keeping
                 self._miners.add(m)

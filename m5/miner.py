@@ -2,11 +2,15 @@
 
 import re
 from bs4 import BeautifulSoup
-import subprocess
 
 
 class MessengerMiner:
-    """ The MessengerMiner class handles scraping off data from the Messenger server. """
+    """
+    The MessengerMiner class handles scraping off data from the Messenger
+    company server (http://bamboo-mec.de). Can be extended to other companies.
+    """
+
+    _DEBUG = True
 
     # Where the information hides on a job's web page
     _TAGS = dict(
@@ -50,6 +54,7 @@ class MessengerMiner:
         :param server: the server url
         """
         self.date = date
+        self._date_string = date.strftime('%d-%m-%Y')
         self._session = session
         self._server = server
         self.debug_messages = []
@@ -64,16 +69,12 @@ class MessengerMiner:
 
         # Prepare the request and shoot
         url = self._server + 'll.php5'
-        payload = {'status': 'delivered', 'datum': self.date.strftime('%d.%m.%Y')}
+        payload = {'status': 'delivered', 'datum': self._date_string}
         response = self._session.get(url, params=payload)
 
         # Scrape the uuid parameters
         pattern = 'uuid=(\d{7})'
         jobs = re.findall(pattern, response.text)
-
-        # soup = BeautifulSoup(response.text)
-        # path = self._save_soup(soup, 'summary')
-        # subprocess.call('firefox ' + path)
 
         # Each uuid appears twice on the page
         # (two links), so dump the duplicates.
@@ -95,19 +96,26 @@ class MessengerMiner:
         # Turn it into a digestible soup
         # and filter out the tasty stuff
         soup = BeautifulSoup(response.text)
-        return soup.find(id='order_detail')
+        order_detail = soup.find(id='order_detail')
 
-    def _save_soup(self, soup, filename) -> str:
+        return order_detail
+
+    def _save_html(self, source, stamp, is_soup=True) -> str:
         """
         From the soup, prettify the html and save it to file.
 
-        :param soup: (tag object) the web page in soup form
-        :param filename: (str) the job's identifier
+        :param source: (tag object) the web page in soup form
+        :param stamp: (str) the job's identifier
         """
 
-        path = 'output/' + self.date.strftime('%d-%m-%Y') + '-' + filename + '.html'
+        if is_soup:
+            text = source.prettify()
+        else:
+            text = source
+
+        path = 'output/' + self._date_string + '-' + stamp + '.html'
         with open(path, 'w') as f:
-            f.write(soup.prettify())
+            f.write(text)
             f.close()
 
         return path
@@ -192,7 +200,8 @@ class MessengerMiner:
 
         return raw_data
 
-    def _scrape_prices(self, soup_subset) -> dict:
+    @staticmethod
+    def _scrape_prices(soup_subset) -> dict:
         """
         Scrape the 'prices' table at the bottom of the page. This section is
         scraped seperately because it's already neatly formatted as a table.
@@ -232,7 +241,7 @@ class MessengerMiner:
         # TODO Data pre-processing goes here!
         self.raw_data = raw_data
 
-    def _store_debug_message(self, name: str, item, contents):
+    def _store_debug_message(self, name, item, contents):
         """
         Save a debug message showing the context where the scraping went wrong.
         And while we're at it, save a copy of the html file for later inspection.
@@ -241,7 +250,10 @@ class MessengerMiner:
         :param item: (dict) the field information
         :param item: (list) the section of the document
         """
-        self.debug_messages.append('************************************************')
+
+        seperator = '*' * 50
+
+        self.debug_messages.append(seperator)
         self.debug_messages.append('Could not scrape \'{}\' from \'{}\' on line {}\n'.format(
             name,
             contents[item['line']],
@@ -249,4 +261,4 @@ class MessengerMiner:
         )
         for line, content in enumerate(contents):
             self.debug_messages.append(str(line) + ': ' + content)
-        self.debug_messages.append('************************************************')
+        self.debug_messages.append(seperator)
