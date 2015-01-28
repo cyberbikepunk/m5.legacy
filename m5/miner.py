@@ -6,7 +6,7 @@ import subprocess
 
 
 class MessengerMiner:
-    """ The MessengerMiner class handles scraping off data from the messenger server. """
+    """ The MessengerMiner class handles scraping off data from the Messenger server. """
 
     # Where the information hides on a job's web page
     _TAGS = dict(
@@ -71,9 +71,9 @@ class MessengerMiner:
         pattern = 'uuid=(\d{7})'
         jobs = re.findall(pattern, response.text)
 
-        soup = BeautifulSoup(response.text)
-        path = self._save_soup(soup, 'summary')
-        subprocess.call('firefox ' + path)
+        # soup = BeautifulSoup(response.text)
+        # path = self._save_soup(soup, 'summary')
+        # subprocess.call('firefox ' + path)
 
         # Each uuid appears twice on the page
         # (two links), so dump the duplicates.
@@ -112,12 +112,12 @@ class MessengerMiner:
 
         return path
 
-    def _scrape_subset(self, fields, soup_subset) -> dict:
+    def _scrape_subset(self, blueprint, soup_subset) -> dict:
         """
-        Scrape a sub-section of the html document.
+        Scrape a sub-section of the html document using the blueprints.
 
-        :param fields: (dict) the fields to be collected
-        :param soup_subset: (tag object) the contents of a tag in soup form
+        :param blueprint: (dict) how to scrape each field
+        :param soup_subset: (tag object) the text inside an html tag in soup form
         :return: field name/value pairs
         """
 
@@ -135,12 +135,12 @@ class MessengerMiner:
 
         # Collect each field one by one, even if that
         # means returning to the same line several times.
-        for name, item in fields.items():
-            match = re.match(item['pattern'], contents[item['line']])
+        for name, field in blueprint.items():
+            match = re.match(field['pattern'], contents[field['line']])
             if match:
                 collected[name] = match.group(1)
             else:
-                if item['optional']:
+                if field['optional']:
                     # If we fail to scrape the field but the field is optional:
                     # assign the dictionary key anyways:
                     collected[name] = None
@@ -148,7 +148,7 @@ class MessengerMiner:
                     # TODO Raise a warning when a non-optional field is not found
                     # If we fail to scrape a field that we actually need: ouch!
                     # Don't assign any key and make sure we give some feedback.
-                    self._store_debug_message(name, item, contents)
+                    self._store_debug_message(name, field, contents)
 
         return collected
 
@@ -229,7 +229,7 @@ class MessengerMiner:
         return price_table
 
     def package_job(self, raw_data):
-        # TODO Data pre-processing comes here!
+        # TODO Data pre-processing goes here!
         self.raw_data = raw_data
 
     def _store_debug_message(self, name: str, item, contents):
