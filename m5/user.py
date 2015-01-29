@@ -198,7 +198,7 @@ class Messenger:
                     # We don't pickle the data yet! Only upon exit.
                     soup = m.get_job(j)
                     raw_data = m.scrape_job(soup)
-                    m.package_job(raw_data)
+                    m.process_job(raw_data)
 
                     # We wanna see results!
                     pp = PrettyPrinter()

@@ -48,7 +48,8 @@ class MessengerMiner:
         """ Initialize class attributes.
 
         :param date: the datetime object to be mined
-        :param session: the current session object
+        :param session: the current
+        if self._DEBUG:session object
         :param server: the server url
         """
         self.date = date
@@ -244,9 +245,10 @@ class MessengerMiner:
 
         return price_table
 
-    def package_job(self, raw_data):
+    def process_job(self, raw_data):
         # TODO Data pre-processing goes here!
         self.raw_data = raw_data
+        p = Processor(raw_data)
 
     def _store_debug_message(self, name: str, item, contents):
         """

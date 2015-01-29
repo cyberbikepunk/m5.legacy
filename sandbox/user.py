@@ -221,7 +221,7 @@ class Messenger:
                     # pickle multiple days at once before exit.
                     soup = m.get_job(j)
                     raw_data = m.scrape_job(soup)
-                    m.package_job(raw_data)
+                    m.process_job(raw_data)
 
                     # So wanna see results?
                     pp = PrettyPrinter()
