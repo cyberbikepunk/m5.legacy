@@ -2,13 +2,11 @@
 
 import re
 from bs4 import BeautifulSoup
+import subprocess
 
 
 class MessengerMiner:
-    """
-    The MessengerMiner class handles scraping off data from the Messenger
-    company server (http://bamboo-mec.de). Can be extended to other companies.
-    """
+    """ The MessengerMiner class handles scraping off data from the Messenger server. """
 
     _DEBUG = True
 
@@ -31,7 +29,7 @@ class MessengerMiner:
             after={'line': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
             purpose={'line': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
             timestamp={'line': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
-            until={'line': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True}
+            until={'line': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optasty_souptional': True}
         ),
         header=dict(
             job_id={'line': 0, 'pattern': r'.*(\d{10})', 'optional': True},
@@ -54,7 +52,7 @@ class MessengerMiner:
         :param server: the server url
         """
         self.date = date
-        self._date_string = date.strftime('%d-%m-%Y')
+        self._sdate = date.strftime('%d-%m-%Y')
         self._session = session
         self._server = server
         self.debug_messages = []
@@ -69,12 +67,17 @@ class MessengerMiner:
 
         # Prepare the request and shoot
         url = self._server + 'll.php5'
-        payload = {'status': 'delivered', 'datum': self._date_string}
+        payload = {'status': 'delivered', 'datum': self.date.strftime('%d.%m.%Y')}
         response = self._session.get(url, params=payload)
 
         # Scrape the uuid parameters
         pattern = 'uuid=(\d{7})'
         jobs = re.findall(pattern, response.text)
+
+        if self._DEBUG:
+            soup = BeautifulSoup(response.text)
+            self._save_html(soup, 'soup', is_soup=True)
+            self._save_html(response.text, 'raw', is_soup=False)
 
         # Each uuid appears twice on the page
         # (two links), so dump the duplicates.
@@ -96,9 +99,13 @@ class MessengerMiner:
         # Turn it into a digestible soup
         # and filter out the tasty stuff
         soup = BeautifulSoup(response.text)
-        order_detail = soup.find(id='order_detail')
+        # order_detail = soup.find(id='order_detail')
 
-        return order_detail
+        if self._DEBUG:
+            self._save_html(soup, uuid)
+
+        # assert isinstance(order_detail, object)
+        return soup
 
     def _save_html(self, source, stamp, is_soup=True) -> str:
         """
@@ -113,7 +120,7 @@ class MessengerMiner:
         else:
             text = source
 
-        path = 'output/' + self._date_string + '-' + stamp + '.html'
+        path = 'output/' + self._sdate + '-' + stamp + '.html'
         with open(path, 'w') as f:
             f.write(text)
             f.close()
@@ -241,7 +248,7 @@ class MessengerMiner:
         # TODO Data pre-processing goes here!
         self.raw_data = raw_data
 
-    def _store_debug_message(self, name, item, contents):
+    def _store_debug_message(self, name: str, item, contents):
         """
         Save a debug message showing the context where the scraping went wrong.
         And while we're at it, save a copy of the html file for later inspection.
@@ -252,7 +259,6 @@ class MessengerMiner:
         """
 
         seperator = '*' * 50
-
         self.debug_messages.append(seperator)
         self.debug_messages.append('Could not scrape \'{}\' from \'{}\' on line {}\n'.format(
             name,
