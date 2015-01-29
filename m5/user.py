@@ -139,7 +139,7 @@ class Messenger:
         if not input_string:
             try:
                 if self._DEBUG:
-                    input_string = 'mine("18-12-2014")'
+                    input_string = 'mine("19-12-2014")'
                 else:
                     input_string = input('Enter "method()" or "quit()":  ')
 

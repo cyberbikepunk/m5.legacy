@@ -120,7 +120,7 @@ class MessengerMiner:
         else:
             text = source
 
-        path = 'output/' + self._sdate + '-' + stamp + '.html'
+        path = '../output/' + self._sdate + '-' + stamp + '.html'
         with open(path, 'w') as f:
             f.write(text)
             f.close()
