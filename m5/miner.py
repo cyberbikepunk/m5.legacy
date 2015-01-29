@@ -2,7 +2,9 @@
 
 import re
 from bs4 import BeautifulSoup
-import subprocess
+from pprint import PrettyPrinter
+
+from m5.utilities import record
 
 
 class MessengerMiner:
@@ -29,7 +31,7 @@ class MessengerMiner:
             after={'line': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
             purpose={'line': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
             timestamp={'line': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
-            until={'line': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optasty_souptional': True}
+            until={'line': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True}
         ),
         header=dict(
             job_id={'line': 0, 'pattern': r'.*(\d{10})', 'optional': True},
@@ -44,21 +46,63 @@ class MessengerMiner:
         )
     )
 
-    def __init__(self, date, session, server):
+    def __init__(self, session, server):
         """ Initialize class attributes.
 
         :param date: the datetime object to be mined
-        :param session: the current session object
+        :param session: the current
         :param server: the server url
         """
-        self.date = date
-        self._sdate = date.strftime('%d-%m-%Y')
+
+        # FIXME Better when alphabetical is chronological
+        # FIXME Date string doesn't belong here
         self._session = session
         self._server = server
+        self.html = list()
         self.debug_messages = []
         self.raw_data = None
+        self.data = None
 
-    def fetch_jobs(self) -> set:
+    def process(self, date):
+        """ Top level flow """
+
+        collected_jobs = list()
+        collected_addresses = list()
+
+        # Go browse the web summary page for that day
+        # and scrape off the jobs uuid request parameters.
+        job_ids = self.fetch_job_ids(date)
+
+        # Sometimes I don't go to work
+        if job_ids:
+            for job_id in job_ids:
+                # This is where the fun part happens
+                soup = self.get_job(job_id)
+                job, addresses = self.scrape_job(soup)
+
+                # Dump the results
+                if self._DEBUG:
+                    pp = PrettyPrinter()
+                    pp.pprint(job)
+                    print('\n')
+                    pp.pprint(addresses)
+                    print('\n')
+
+                # Store what we've collected
+                collected_jobs.append(job)
+                for address in addresses:
+                    collected_addresses.append(address)
+
+            record('Mined: {} successfully!', self.date.strftime('%d-%m-%Y'))
+
+            # If some fields failed to be scraped,
+            # return some feedback about the context
+            for message in self.debug_messages:
+                record(message)
+
+            return collected_jobs, collected_addresses
+
+    def fetch_job_ids(self, date) -> set:
         """
         Return unique 'uuid' request parameters for every job on that day.
 
@@ -67,7 +111,7 @@ class MessengerMiner:
 
         # Prepare the request and shoot
         url = self._server + 'll.php5'
-        payload = {'status': 'delivered', 'datum': self.date.strftime('%d.%m.%Y')}
+        payload = {'status': 'delivered', 'datum': date.strftime('%d.%m.%Y')}
         response = self._session.get(url, params=payload)
 
         # Scrape the uuid parameters
@@ -99,13 +143,13 @@ class MessengerMiner:
         # Turn it into a digestible soup
         # and filter out the tasty stuff
         soup = BeautifulSoup(response.text)
-        # order_detail = soup.find(id='order_detail')
+        order_detail = soup.find(id='order_detail')
 
         if self._DEBUG:
             self._save_html(soup, uuid)
 
-        # assert isinstance(order_detail, object)
-        return soup
+        # TODO Make an assertion about the html that we get back?
+        return order_detail
 
     def _save_html(self, source, stamp, is_soup=True) -> str:
         """
@@ -120,7 +164,7 @@ class MessengerMiner:
         else:
             text = source
 
-        path = 'output/' + self._sdate + '-' + stamp + '.html'
+        path = '../output/' + self._sdate + '-' + stamp + '.html'
         with open(path, 'w') as f:
             f.write(text)
             f.close()
@@ -178,18 +222,19 @@ class MessengerMiner:
         """
 
         # Step 1: job details
-        details = dict()
+        job = dict()
 
         subsets = ['header', 'client', 'itinerary']
 
         for subset in subsets:
             soup_subset = soup.find_next(name=self._TAGS[subset]['name'])
             fields_subset = self._scrape_subset(self._BLUEPRINTS[subset], soup_subset)
-            details.update(fields_subset)
+            job.update(fields_subset)
 
         # Step 2: the price table at the bottom of the page
         soup_subset = soup.find(self._TAGS['prices']['name'])
         prices = self._scrape_prices(soup_subset)
+        job.update(prices)
 
         # Step 3: an arbitrary number of addresses
         soup_subsets = soup.find_all(
@@ -202,10 +247,7 @@ class MessengerMiner:
             address = self._scrape_subset(self._BLUEPRINTS['address'], soup_subset)
             addresses.append(address)
 
-        # Package everything up nicely
-        raw_data = dict(details=details, prices=prices, addresses=addresses)
-
-        return raw_data
+        return job, addresses
 
     @staticmethod
     def _scrape_prices(soup_subset) -> dict:
@@ -222,7 +264,7 @@ class MessengerMiner:
         cells = list(soup_subset.stripped_strings)
         price_table = dict(zip(cells[::2], cells[1::2]))
 
-        # Original field names are no good. Change them.
+        # Original field names are no good. Change theself.
         # Note: there are several flavours of overnights.
         keys = [
             ('Stadtkurier',         'city_tour'),
@@ -244,9 +286,15 @@ class MessengerMiner:
 
         return price_table
 
-    def package_job(self, raw_data):
+    def process_job(self, raw_data):
+        """
+        In come raw strings, freshly scraped from the website. Send the raw data to the pre-processing.
+
+        :param raw_data: a dictionnary of key/value fields
+        """
         # TODO Data pre-processing goes here!
         self.raw_data = raw_data
+        p = Processor(raw_data)
 
     def _store_debug_message(self, name: str, item, contents):
         """
