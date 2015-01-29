@@ -2,13 +2,11 @@
 
 
 from requests import Session, Request
-from pickle import load, dump
-from os.path import isfile
 from pprint import PrettyPrinter
 from getpass import getpass
 
 from m5.miner import MessengerMiner
-from m5.interpreter import Interpreter
+from m5.database import Database
 from m5.utilities import record
 
 
@@ -48,7 +46,7 @@ class Messenger:
             self._load()
 
         self.miner = MessengerMiner(self._session, self._server)
-        self.interpreter = Interpreter()
+        self.interpreter = Database()
 
     def _authenticate(self, username='', password=''):
         """ Make login attempts until successful. """
@@ -74,40 +72,6 @@ class Messenger:
         else:
             record('You are logged in.')
 
-    @property
-    def _is_returning(self) -> bool:
-        """ True if the user has local data. """
-
-        if isfile(self._datafile):
-            record('You are a returning user.')
-            return True
-        else:
-            record('You are a new user.')
-            return False
-
-    def _load(self):
-        """ Load pickled user data from file. """
-
-        # TODO Handle file I/O errors properly
-        with open(self._datafile, 'rb') as f:
-            objects = load(f)
-            record('Loaded user data successfully')
-
-        # Unpack the pickled object
-        self.mined = objects['miners']
-        self.data = objects['data']
-
-    def save(self):
-        """ Pickle the user data to file. Yep, that our database! """
-
-        # Package up for pickling
-        objects = {'miners': self.mined, 'data': self.data}
-
-        with open(self._datafile, 'wb+') as f:
-            # Pickle with the highest protocol
-            dump(objects, f, -1)
-            record('Saved user data successfully')
-
     def quit(self):
         """ Make a clean exit from the program. """
 
@@ -129,15 +93,3 @@ class Messenger:
             record('Logged out successfully. Goodbye!')
 
         self._session.close()
-
-    def interpret(self, date):
-        pass
-
-    def mine(self, date):
-        """
-        If that date hasn't been mined before, mine it!
-
-        :param date_string: one day in the format dd-mm-yyyy
-        """
-
-        jobs, addresses = self.miner.process(date)
