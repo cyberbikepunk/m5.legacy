@@ -40,7 +40,7 @@ class Messenger:
         self._authenticate(self._username, self._password)
 
         # Data that has already been mined is stored locally
-        self._datafile = 'users/{}.pkl'.format(self._username)
+        self._datafile = '../users/{}.pkl'.format(self._username)
         if self._is_returning:
             self._load()
 

@@ -29,7 +29,7 @@ class MessengerMiner:
             after={'line': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
             purpose={'line': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
             timestamp={'line': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
-            until={'line': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optasty_souptional': True}
+            until={'line': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True}
         ),
         header=dict(
             job_id={'line': 0, 'pattern': r'.*(\d{10})', 'optional': True},
@@ -99,13 +99,13 @@ class MessengerMiner:
         # Turn it into a digestible soup
         # and filter out the tasty stuff
         soup = BeautifulSoup(response.text)
-        # order_detail = soup.find(id='order_detail')
+        order_detail = soup.find(id='order_detail')
 
         if self._DEBUG:
             self._save_html(soup, uuid)
 
-        # assert isinstance(order_detail, object)
-        return soup
+        # TODO Make an assertion about the html that we get back?
+        return order_detail
 
     def _save_html(self, source, stamp, is_soup=True) -> str:
         """
