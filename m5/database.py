@@ -12,11 +12,10 @@ class Database():
 
     def __init__(self, username: str) -> Database:
         """
-        Instantiate a database object. Create the database file
-        if needed. The database has the following tables:
-
+        If the user is new, create a database file
+        with 3 empty tables:
             - jobs
-            - addresses
+            - checkins
             - checkpoints
 
         :param username: the owner
@@ -27,7 +26,7 @@ class Database():
         self.directory = '../users/'.format(self.username)
 
         self.tables = {'jobs',
-                       'addresses',
+                       'checkins',
                        'checkpoints'}
 
         for table in self.tables:
@@ -53,12 +52,12 @@ class Database():
         """
         Scraped data fields are returned as raw strings by the miner.
         Unserialize the fields, geocode each address and return a table
-        of unduplicated checkpoints and checkins, structured like this...
+        of checkpoints (with possible duplicates) and a table of checkins.
 
         Checkpoints table:
             - a list of tuples(checkpoint_id, job_ids, checkpoint)
             - checkpoint_id: a unique string (primary key)
-            - job_ids: a SET of correspon job ids (secondary key)
+            - job_ids: a set of correspon job ids (secondary key)
             - checkpoint: a dictionnay of name/value pairs
 
         Checkins table: tuple(checkin_id, job_id, checkin)
@@ -68,7 +67,6 @@ class Database():
         """
         return checkpoints, checkins
 
-    @log_me
     def merge_addresses(self):
         pass
 

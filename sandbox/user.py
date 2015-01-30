@@ -9,7 +9,7 @@ from requests import Request, Session
 from getpass import getpass
 
 
-from m5.miner import MessengerMiner
+from m5.miner import Miner
 
 
 def _safe_request(session, request):
@@ -197,7 +197,7 @@ class Messenger:
         """ If that date hasn't been scraped before, scrape it! """
         date_string = date.strftime('%d-%m-%Y')
         # Switch on the engine
-        m = MessengerMiner(date=date, session=self._session, server=self._server)
+        m = Miner(date=date, session=self._session, server=self._server)
 
         # Been there, done that
         if date in self._miners:

@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 
 class MessengerMiner:
-    """ The MessengerMiner class handles scraping off data from the company server. """
+    """ The Miner class handles scraping off data from the company server. """
 
     # BeautifulSoup4 helps us cut up web pages into small pieces.
     # Here are the pieces where the data hides.

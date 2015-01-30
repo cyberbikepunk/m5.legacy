@@ -5,7 +5,7 @@ from requests import Session, Request
 from pprint import PrettyPrinter
 from getpass import getpass
 
-from m5.miner import MessengerMiner
+from m5.miner import Miner
 from m5.database import Database
 from m5.utilities import record
 
@@ -14,13 +14,7 @@ class Messenger:
     """
     The Messenger class manages user activity for couriers freelancing
     for Messenger (http://messenger.de). This is the default user class.
-    It can be extended to other courier companies.
-
-    Public methods (API):
-        - mine('dd.mm.yyyy'): mine one day of data
-        - save(): pickle the user object
-        - quit(): make a clean exit
-        - more to come...
+    It can theoretically be overridden for other courier companies.
     """
 
     _DEBUG = True
@@ -45,7 +39,7 @@ class Messenger:
         if self._is_returning:
             self._load()
 
-        self.miner = MessengerMiner(self._session, self._server)
+        self.miner = Miner(self._session, self._server)
         self.interpreter = Database()
 
     def _authenticate(self, username='', password=''):
