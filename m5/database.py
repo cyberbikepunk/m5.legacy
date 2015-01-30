@@ -5,7 +5,7 @@ from pickle import load, dump
 from os.path import isdir
 from os import mkdir
 
-from m5.utilities import log_me, safe_io
+from m5.utilities import safe_io
 
 
 class Database:
@@ -17,6 +17,7 @@ class Database:
             - jobs
             - checkins
             - checkpoints
+            - sessions
 
         :param username: the owner
         :return: a Database object
@@ -27,7 +28,8 @@ class Database:
 
         self.tables = {'jobs',
                        'checkins',
-                       'checkpoints'}
+                       'checkpoints',
+                       'sessions'}
 
         # Create a class attribute
         # for each table on the fly
@@ -46,59 +48,33 @@ class Database:
         exists = True if isdir(self.path) else False
         return exists
 
-    @log_me
-    def process(self, jobs: list) -> list:
-        """
-        Scraped data fields are returned as raw strings by the miner.
-        This is where the data gets processed before it can be stored to
-        the database.
-        Unserialize the fields, geocode each address and return a table
-        of checkpoints (with possible duplicates) and a table of checkins.
-
-        Checkpoints table:
-            - a list of tuples(checkpoint_id, job_ids, checkpoint)
-            - checkpoint_id: a unique string (primary key)
-            - job_ids: a set of correspon job ids (secondary key)
-            - checkpoint: a dictionnay of name/value pairs
-
-        Checkins table: tuple(checkin_id, job_id, checkin)
-            - checkin_id: a unique string (primary key)
-            - job_ids: a set of matching job ids (secondary key)
-            - ckeckin: a dictionnay of name/value pairs
-        """
-        pass
-
-    def merge_addresses(self):
+    def merge(self):
         pass
 
     def save(self, table: str=None):
-        """ Unpickle the database or tables from file """
+        """ Pickle the database or a table from file. """
         tables = {table} if table else self.tables
         for table in tables:
             self.save_table(table)
 
     def load(self, table: str=None):
-        """ Pickle the database or tables to file """
+        """ Unpickle the database or a table to file. """
         tables = {table} if table else self.tables
         for table in tables:
             self.load_table(table)
 
-    @log_me
     @safe_io
     def save_table(self, table: str):
-        """ Pickle one table to file """
-
+        """ Pickle one table to file. """
         filename = self.path + table + '.pkl'
         with open(filename, 'wb+') as f:
             # Use the highest protocol
             dump(getattr(self, table), f, -1)
         notify('Saved {} table to file.', table)
 
-    @log_me
     @safe_io
     def load_table(self, table: str):
         """ Unpickle one table from file. """
-
         filename = self.path + table + '.pkl'
         with open(filename, 'wb+') as f:
             setattr(self, table, load(f))

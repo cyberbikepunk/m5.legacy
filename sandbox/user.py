@@ -207,7 +207,7 @@ class Messenger:
         else:
             # Go browse the web summary page for that day
             # and scrape off the job uuid request parameters.
-            jobs = m._fetch_job_ids()
+            jobs = m._fetch_uuids()
 
             # I don't work on weekends
             if not jobs:

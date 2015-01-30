@@ -7,7 +7,7 @@ from requests import Session
 from bs4 import BeautifulSoup
 from pprint import PrettyPrinter
 
-from m5.utilities import notify
+from m5.utilities import notify, log_me, time_me
 
 
 class Miner:
@@ -20,38 +20,26 @@ class Miner:
     _DEBUG = True
 
     # Specify the relevant tags in the DOM tree.
-    _TAGS = dict(
-        address={'name': 'div', 'attrs': {'data-collapsed': 'true'}},
-        header={'name': 'h2', 'attrs': None},
-        client={'name': 'h4', 'attrs': None},
-        itinerary={'name': 'p', 'attrs': None},
-        prices={'name': 'tbody', 'attrs': None}
-    )
+    _TAGS = dict(header={'name': 'h2', 'attrs': None},
+                 client={'name': 'h4', 'attrs': None},
+                 itinerary={'name': 'p', 'attrs': None},
+                 prices={'name': 'tbody', 'attrs': None},
+                 address={'name': 'div', 'attrs': {'data-collapsed': 'true'}})
 
     # Each field has a regex blueprint.
-    _BLUEPRINTS = dict(
-        address=dict(
-            company={'line_number': 1, 'pattern': r'(.*)', 'optional': False},
-            address={'line_number': 2, 'pattern': r'(.*)', 'optional': False},
-            city={'line_number': 3, 'pattern': r'(?:\d{5})\s(.*)', 'optional': False},
-            postal_code={'line_number': 3, 'pattern': r'(\d{5})(?:.*)', 'optional': False},
-            after={'line_number': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
-            purpose={'line_number': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
-            timestamp={'line_number': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
-            until={'line_number': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True}
-        ),
-        header=dict(
-            job_id={'line_number': 0, 'pattern': r'.*(\d{10})', 'optional': True},
-            cash_payment={'line_number': 0, 'pattern': '(BAR)', 'optional': True}
-        ),
-        client=dict(
-            client_id={'line_number': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
-            client_name={'line_number': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False}
-        ),
-        itinerary=dict(
-            km={'line_number': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True}
-        )
-    )
+    _BLUEPRINTS = {'itinerary': dict(km={'line_number': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True}),
+                   'header': dict(job_id={'line_number': 0, 'pattern': r'.*(\d{10})', 'optional': True},
+                                  cash_payment={'line_number': 0, 'pattern': '(BAR)', 'optional': True}),
+                   'client': dict(client_id={'line_number': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
+                                  client_name={'line_number': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False}),
+                   'adddress': dict(company={'line_number': 1, 'pattern': r'(.*)', 'optional': False},
+                                    address={'line_number': 2, 'pattern': r'(.*)', 'optional': False},
+                                    city={'line_number': 3, 'pattern': r'(?:\d{5})\s(.*)', 'optional': False},
+                                    postal_code={'line_number': 3, 'pattern': r'(\d{5})(?:.*)', 'optional': False},
+                                    after={'line_number': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
+                                    purpose={'line_number': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
+                                    timestamp={'line_number': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
+                                    until={'line_number': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True}))
 
     def __init__(self, dates: set, server: str, session: Session):
         """
@@ -87,11 +75,10 @@ class Miner:
 
             # Go browse the summary page for that day
             # and scrape off 'uuid' parameters.
-            uuids = self._fetch_job_ids(date)
+            uuids = self._fetch_uuids(date)
 
             # Was it a working day?
             if uuids:
-
                 for uuid in uuids:
                     self._uuid = uuid
 
@@ -107,7 +94,29 @@ class Miner:
 
         return jobs
 
-    def _fetch_job_ids(self, date: datetime) -> set:
+    @log_me
+    def process(self, jobs: list) -> list:
+        """
+        Scraped data fields are returned as raw strings by the miner.
+        This is where the data gets processed before it can be stored to
+        the database.
+        Unserialize the fields, geocode each address and return a table
+        of checkpoints (with possible duplicates) and a table of checkins.
+
+        Checkpoints table:
+            - a list of tuples(checkpoint_id, job_ids, checkpoint)
+            - checkpoint_id: a unique string (primary key)
+            - job_ids: a set of correspon job ids (secondary key)
+            - checkpoint: a dictionnay of name/value pairs
+
+        Checkins table: tuple(checkin_id, job_id, checkin)
+            - checkin_id: a unique string (primary key)
+            - job_ids: a set of matching job ids (secondary key)
+            - ckeckin: a dictionnay of name/value pairs
+        """
+        pass
+
+    def _fetch_uuids(self, date: datetime) -> set:
         """
         Return unique 'uuid' request parameters for each job
         by scraping the overview page for that date.
@@ -171,20 +180,20 @@ class Miner:
 
         # Collect each field one by one, even if that
         # means returning to the same line several times.
-        for name, field in blueprint.items():
+        for field_name, field in blueprint.items():
             match = re.match(field['pattern'], contents[field['line_number']])
             if match:
-                collected[name] = match.group(1)
+                collected[field_name] = match.group(1)
             else:
                 if field['optional']:
                     # If we fail to scrape the field but the field is optional:
                     # assign the dictionary key anyways:
-                    collected[name] = None
+                    collected[field_name] = None
                 else:
                     # If we fail to scrape a field that we actually need: ouch!
                     # Don't assign any key and make sure we give some feedback.
                     message = 'Failed to scrape {}: {}ll_detail.php5?status=delivered&uuid={}'
-                    notify(message, name, self._server, self._uuid)
+                    notify(message, field_name, self._server, self._uuid)
 
         return collected
 
@@ -243,14 +252,12 @@ class Miner:
 
         # Original field names are no good. Change theself.
         # Note: there are several flavours of overnights.
-        keys = [
-            ('Stadtkurier',         'city_tour'),
-            ('Stadt Stopp(s)',      'extra_stops'),
-            ('OV Ex Nat PU',        'overnight'),
-            ('ON Ex Nat Del.',      'overnight'),
-            ('EmpfangsbestÃ¤t.',    'fax_confirm'),
-            ('Wartezeit min.',      'waiting_time')
-        ]
+        keys = [('Stadtkurier', 'city_tour'),
+                ('Stadt Stopp(s)', 'extra_stops'),
+                ('OV Ex Nat PU', 'overnight'),
+                ('ON Ex Nat Del.', 'overnight'),
+                ('EmpfangsbestÃ¤t.', 'fax_confirm'),
+                ('Wartezeit min.', 'waiting_time')]
 
         for old, new in keys:
             if old in price_table:
