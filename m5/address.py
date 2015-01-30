@@ -5,7 +5,7 @@ from geopy.geocoders import Nominatim
 
 class Address():
 
-    def serialize_address(address: dict):
+    def serialize(address: dict):
         """
         Take a dictionnary and make a string for the geocoder.
 

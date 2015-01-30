@@ -5,15 +5,24 @@ The idea is to log myself onto the company server and let me play
 with the module API. Once I'm happy, I'll write a web interface.
 """
 
+from pprint import PrettyPrinter
 
-from m5 import user
+from m5.user import User
 from datetime import datetime
 
-u = user.Messenger('m-134', 'PASSWORD')
+pp = PrettyPrinter()
+
+u = User('m-134', 'PASSWORD')
+
 
 # Pick a date
-date = datetime('19-12-2014')
+date = datetime(2014, 12, 19)
+
 
 # Play with the API
-u.mine(date)
-u.interpret(date)
+u.db.checkins = list(range(1000))
+u.db.save('checkins')
+u.db.checkins = list(range(100))
+u.db.save('checkins')
+u.db.load('checkins')
+pp.pprint(u)

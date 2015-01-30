@@ -55,7 +55,7 @@ class Miner:
 
     def __init__(self, dates: set, server: str, session: Session):
         """
-        Initialize class attributes.
+        Instantiate a Miner object for a set of dates.
 
         :param dates: a set of datetime objects
         :param server: the url of the server
@@ -66,8 +66,9 @@ class Miner:
         self._server = server
         self._session = session
 
-        # Used only in debug mode
-        self._warnings = list()
+        # State attributes
+        self._date = datetime(1, 1, 1)
+        self._uuid = str()
 
     @time_me
     @log_me
@@ -81,16 +82,20 @@ class Miner:
         jobs = list()
         pp = PrettyPrinter()
 
-        for date in dates:
+        for date in self.dates:
+            self._date = date
+
             # Go browse the summary page for that day
             # and scrape off 'uuid' parameters.
-            job_ids = self._fetch_job_ids(date)
+            uuids = self._fetch_job_ids(date)
 
             # Was it a working day?
-            if job_ids:
+            if uuids:
 
-                for job_id in job_ids:
-                    soup = self._get_job(job_id)
+                for uuid in uuids:
+                    self._uuid = uuid
+
+                    soup = self._get_job(uuid)
                     job = self._scrape_job(soup)
 
                     if self._DEBUG:
@@ -114,10 +119,8 @@ class Miner:
         url = self._server + 'll.php5'
         payload = {'status': 'delivered',
                    'datum': date.strftime('%d.%m.%Y')}
-        response = self._session.get(url, params=payload)
 
-        if self._DEBUG:
-            self._save_html(response.text, date=date)
+        response = self._session.get(url, params=payload)
 
         pattern = 'uuid=(\d{7})'
         jobs = re.findall(pattern, response.text)
@@ -127,7 +130,7 @@ class Miner:
 
     def _get_job(self, uuid: str) -> BeautifulSoup:
         """
-        Get the page for that date and return a beautiful soup.
+        Get the page for that date and return a soup.
 
         :param uuid: the 'uuid' request parameter
         :return: parsed html soup
@@ -138,27 +141,12 @@ class Miner:
 
         response = self._session.get(url, params=payload)
 
-        if self._DEBUG:
-            self._save_html(response.text, uuid)
-
         # Parse the raw html text
         soup = BeautifulSoup(response.text)
         # Return only what we need
         order_detail = soup.find(id='order_detail')
 
         return order_detail
-
-    @staticmethod
-    def _save_html(raw_html: str, date: datetime=None, stamp: str=None) -> str:
-        """
-        Prettify the html and save it for debugging.
-
-        :param raw_html: from the response object
-        :param date:
-        :param stamp: (str) the job's identifier
-        """
-
-
 
     def _scrape_subset(self, blueprint: dict, soup_subset: BeautifulSoup) -> dict:
         """
@@ -195,8 +183,8 @@ class Miner:
                 else:
                     # If we fail to scrape a field that we actually need: ouch!
                     # Don't assign any key and make sure we give some feedback.
-                    self._log_warning(name, field, contents)
-                    self._save_html()
+                    message = 'Failed to scrape {}: {}ll_detail.php5?status=delivered&uuid={}'
+                    notify(message, name, self._server, self._uuid)
 
         return collected
 
@@ -275,32 +263,3 @@ class Miner:
 
         return price_table
 
-    def _add_warning(self, name: str, field: dict, context: list):
-        """
-        Store a debug message explaining where the scraping went wrong.
-
-        :param name: (str) the name of the field
-        :param field: (dict) the field blueprint
-        :param context: (list) the context as a list of lines
-        """
-
-        date_string = date.strftime('%d-%m-%Y')
-
-        soup = BeautifulSoup(raw_html)
-        pretty_html = soup.prettify()
-
-        path = '../debug/' + date_string + '-' + stamp + '.html'
-
-        with open(path, 'w') as f:
-            f.write(pretty_html)
-            f.close()
-        self.debug_messages.append('*' * 50)
-
-        # The warning message
-        template = 'Could not scrape "{}" from "{}" on line {}\n'
-        warning = template.format(name, context[field['line_number']], field['line_number'])
-        self.warnings.append(warning)
-
-        # Give the full context.
-        for field, content in enumerate(context):
-            self.debug_messages.append(str(field) + ': ' + content)

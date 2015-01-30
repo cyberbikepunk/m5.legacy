@@ -26,8 +26,8 @@ def _safe_request(session, request):
 
 class Messenger:
     """
-    The Messenger class manages user activity for couriers freelancing
-    for Messenger (http://messenger.de). This is the default user class.
+    The User class manages user activity for couriers freelancing
+    for User (http://messenger.de). This is the default user class.
     It could be extended to other courier companies.
 
     Public methods (API):
@@ -116,7 +116,7 @@ class Messenger:
 
         with open(self._userlog, 'a') as f:
             f.write('\n'.join(self._log) + '\n\n')
-            self._rec('Messenger log saved to {}', self._userlog)
+            self._rec('User log saved to {}', self._userlog)
 
         # Now do the book-keeping
         self.mined.add(date)

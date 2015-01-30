@@ -3,17 +3,17 @@
 from m5.utilities import notify
 from pickle import load, dump
 from os.path import isdir
+from os import mkdir
+
+from m5.utilities import log_me, safe_io
 
 
-class Database():
-    """
-    Here is where the database logistics happen.
-    """
+class Database:
+    """ Here is where the database logistics happen. """
 
-    def __init__(self, username: str) -> Database:
+    def __init__(self, username: str):
         """
-        If the user is new, create a database file
-        with 3 empty tables:
+        If the user is new, create a database file with empty tables:
             - jobs
             - checkins
             - checkpoints
@@ -23,34 +23,35 @@ class Database():
         """
 
         self.username = username
-        self.directory = '../users/'.format(self.username)
+        self.path = '../users/{}/'.format(self.username)
 
         self.tables = {'jobs',
                        'checkins',
                        'checkpoints'}
 
+        # Create a class attribute
+        # for each table on the fly
         for table in self.tables:
-            setattr(table, list())
+            setattr(self, table, list())
 
         if not self.exists:
-            self.pickle()
+            # Create a database
+            mkdir(self.path)
+            self.save()
             notify('Created a new database.')
 
     @property
     def exists(self) -> bool:
-        """
-        True if the user has a local database.
-        """
-
-        if isdir(self.directory):
-            return True
-        else:
-            return False
+        """ True if the user has a database. """
+        exists = True if isdir(self.path) else False
+        return exists
 
     @log_me
-    def process_addresses(self, addresses: list) -> list:
+    def process(self, jobs: list) -> list:
         """
         Scraped data fields are returned as raw strings by the miner.
+        This is where the data gets processed before it can be stored to
+        the database.
         Unserialize the fields, geocode each address and return a table
         of checkpoints (with possible duplicates) and a table of checkins.
 
@@ -65,34 +66,40 @@ class Database():
             - job_ids: a set of matching job ids (secondary key)
             - ckeckin: a dictionnay of name/value pairs
         """
-        return checkpoints, checkins
+        pass
 
     def merge_addresses(self):
         pass
 
+    def save(self, table: str=None):
+        """ Unpickle the database or tables from file """
+        tables = {table} if table else self.tables
+        for table in tables:
+            self.save_table(table)
+
+    def load(self, table: str=None):
+        """ Pickle the database or tables to file """
+        tables = {table} if table else self.tables
+        for table in tables:
+            self.load_table(table)
+
     @log_me
-    def pickle(self):
-        """ Save the user database to file. """
+    @safe_io
+    def save_table(self, table: str):
+        """ Pickle one table to file """
 
-        for name, table in self.tables.items():
-            filename = self.directory.join(table).join('pkl')
-
-            with open(filename, 'wb+') as f:
-                # Pickle with the highest protocol
-                dump(table, f, -1)
-                notify('Saved {} table successfully', name)
+        filename = self.path + table + '.pkl'
+        with open(filename, 'wb+') as f:
+            # Use the highest protocol
+            dump(getattr(self, table), f, -1)
+        notify('Saved {} table to file.', table)
 
     @log_me
-    def _unpickle(self):
-        """ Load the user database from file. """
+    @safe_io
+    def load_table(self, table: str):
+        """ Unpickle one table from file. """
 
-        # TODO Handle file I/O errors properly
-
-        for name, table in self.tables.items():
-            filename = self.directory.join(table).join('pkl')
-
-            with open(filename, 'rb') as f:
-                table = load(f)
-                notify('Loaded {} table successfully', name)
-
-        # TODO call class attributes on the fly
+        filename = self.path + table + '.pkl'
+        with open(filename, 'wb+') as f:
+            setattr(self, table, load(f))
+        notify('Loaded {} table from file.', table)
