@@ -1,13 +1,12 @@
 """ User classes and related stuff. """
 
 
-from requests import Session, Request
-from pprint import PrettyPrinter
+from requests import Session
 from getpass import getpass
 
 from m5.miner import Miner
 from m5.database import Database
-from m5.utilities import record
+from m5.utilities import notify
 
 
 class Messenger:
@@ -64,7 +63,7 @@ class Messenger:
         if not response.ok:
             self._authenticate()
         else:
-            record('You are logged in.')
+            notify('You are logged in.')
 
     def quit(self):
         """ Make a clean exit from the program. """
@@ -84,6 +83,6 @@ class Messenger:
 
         # Last words before we exit
         if response.status_code == 302:
-            record('Logged out successfully. Goodbye!')
+            notify('Logged out successfully. Goodbye!')
 
         self._session.close()

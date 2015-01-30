@@ -1,6 +1,6 @@
 """  The database class and related stuff """
 
-from m5.utilities import record
+from m5.utilities import notify
 from pickle import load, dump
 from os.path import isdir
 
@@ -34,7 +34,7 @@ class Database():
 
         if not self.exists:
             self.pickle()
-            record('Created a new database.')
+            notify('Created a new database.')
 
     @property
     def exists(self) -> bool:
@@ -80,7 +80,7 @@ class Database():
             with open(filename, 'wb+') as f:
                 # Pickle with the highest protocol
                 dump(table, f, -1)
-                record('Saved {} table successfully', name)
+                notify('Saved {} table successfully', name)
 
     @log_me
     def _unpickle(self):
@@ -93,6 +93,6 @@ class Database():
 
             with open(filename, 'rb') as f:
                 table = load(f)
-                record('Loaded {} table successfully', name)
+                notify('Loaded {} table successfully', name)
 
         # TODO call class attributes on the fly

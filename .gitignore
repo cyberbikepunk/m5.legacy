@@ -1,8 +1,10 @@
 # My own additions
-/venv
-/users
-/output
-/sandbox
+venv/
+users/
+output/
+sandbox/
+debug/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

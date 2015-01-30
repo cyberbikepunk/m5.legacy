@@ -1,20 +1,25 @@
 """ Miner classes and related stuff. """
 
 import re
+
+from datetime import datetime
+from requests import Session
 from bs4 import BeautifulSoup
 from pprint import PrettyPrinter
 
-from m5.utilities import record
+from m5.utilities import notify
 
 
 class Miner:
     """
-    Here's where we scrape off data from the company server.
+    The 'mine' method scrapes off data from the company server.
+    It's the only public method in the class. Everything else
+    is low-level internals.
     """
 
     _DEBUG = True
 
-    # Where the information hides on a job's web page
+    # Specify the relevant tags in the DOM tree.
     _TAGS = dict(
         address={'name': 'div', 'attrs': {'data-collapsed': 'true'}},
         header={'name': 'h2', 'attrs': None},
@@ -26,156 +31,141 @@ class Miner:
     # Each field has a regex blueprint.
     _BLUEPRINTS = dict(
         address=dict(
-            company={'line': 1, 'pattern': r'(.*)', 'optional': False},
-            address={'line': 2, 'pattern': r'(.*)', 'optional': False},
-            city={'line': 3, 'pattern': r'(?:\d{5})\s(.*)', 'optional': False},
-            postal_code={'line': 3, 'pattern': r'(\d{5})(?:.*)', 'optional': False},
-            after={'line': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
-            purpose={'line': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
-            timestamp={'line': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
-            until={'line': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True}
+            company={'line_number': 1, 'pattern': r'(.*)', 'optional': False},
+            address={'line_number': 2, 'pattern': r'(.*)', 'optional': False},
+            city={'line_number': 3, 'pattern': r'(?:\d{5})\s(.*)', 'optional': False},
+            postal_code={'line_number': 3, 'pattern': r'(\d{5})(?:.*)', 'optional': False},
+            after={'line_number': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
+            purpose={'line_number': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
+            timestamp={'line_number': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
+            until={'line_number': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True}
         ),
         header=dict(
-            job_id={'line': 0, 'pattern': r'.*(\d{10})', 'optional': True},
-            cash_payment={'line': 0, 'pattern': '(BAR)', 'optional': True}
+            job_id={'line_number': 0, 'pattern': r'.*(\d{10})', 'optional': True},
+            cash_payment={'line_number': 0, 'pattern': '(BAR)', 'optional': True}
         ),
         client=dict(
-            client_id={'line': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
-            client_name={'line': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False}
+            client_id={'line_number': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
+            client_name={'line_number': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False}
         ),
         itinerary=dict(
-            km={'line': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True}
+            km={'line_number': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True}
         )
     )
 
-    def __init__(self, session):
+    def __init__(self, dates: set, server: str, session: Session):
         """
         Initialize class attributes.
 
+        :param dates: a set of datetime objects
+        :param server: the url of the server
         :param session: the current
         """
 
-        self._session = session
+        self.dates = dates
         self._server = server
+        self._session = session
 
-        if self._DEBUG:
-            self.html = list()
-            self.debug_messages = list()
+        # Used only in debug mode
+        self._warnings = list()
 
-    def mine(self, date):
-        """ Top level flow """
-
-        collected_jobs = list()
-        collected_addresses = list()
-
-        # Go browse the web summary page for that day
-        # and scrape off the jobs uuid request parameters.
-        job_ids = self.fetch_job_ids(date)
-
-        # Sometimes I don't go to work
-        if job_ids:
-            for job_id in job_ids:
-                # This is where the fun part happens
-                soup = self.get_job(job_id)
-                job, addresses = self.scrape_job(soup)
-
-                # Dump the results
-                if self._DEBUG:
-                    pp = PrettyPrinter()
-                    pp.pprint(job)
-                    print('\n')
-                    pp.pprint(addresses)
-                    print('\n')
-
-                # Store what we've collected
-                collected_jobs.append(job)
-                for address in addresses:
-                    collected_addresses.append(address)
-
-            record('Mined: {} successfully!', self.date.strftime('%d-%m-%Y'))
-
-            # If some fields failed to be scraped,
-            # return some feedback about the context
-            for message in self.debug_messages:
-                record(message)
-
-            return collected_jobs, collected_addresses
-
-    def fetch_job_ids(self, date) -> set:
+    @time_me
+    @log_me
+    def mine(self) -> list:
         """
-        Return unique 'uuid' request parameters for every job on that day.
+        Mine a set of dates from the server.
 
+        :return: a list of (jobs, addresses) tuples
+        """
+
+        jobs = list()
+        pp = PrettyPrinter()
+
+        for date in dates:
+            # Go browse the summary page for that day
+            # and scrape off 'uuid' parameters.
+            job_ids = self._fetch_job_ids(date)
+
+            # Was it a working day?
+            if job_ids:
+
+                for job_id in job_ids:
+                    soup = self._get_job(job_id)
+                    job = self._scrape_job(soup)
+
+                    if self._DEBUG:
+                        pp.pprint(job)
+
+                    jobs.append(jobs)
+
+                notify('Mined {} OK.', date.strftime('%d-%m-%Y'))
+
+        return jobs
+
+    def _fetch_job_ids(self, date: datetime) -> set:
+        """
+        Return unique 'uuid' request parameters for each job
+        by scraping the overview page for that date.
+
+        :param date: a single day
         :return: A set of 'uuid' strings
         """
 
-        # Prepare the request and shoot
         url = self._server + 'll.php5'
-        payload = {'status': 'delivered', 'datum': date.strftime('%d.%m.%Y')}
+        payload = {'status': 'delivered',
+                   'datum': date.strftime('%d.%m.%Y')}
         response = self._session.get(url, params=payload)
 
-        # Scrape the uuid parameters
+        if self._DEBUG:
+            self._save_html(response.text, date=date)
+
         pattern = 'uuid=(\d{7})'
         jobs = re.findall(pattern, response.text)
 
-        if self._DEBUG:
-            soup = BeautifulSoup(response.text)
-            self._save_html(soup, 'soup', is_soup=True)
-            self._save_html(response.text, 'raw', is_soup=False)
-
-        # Each uuid appears twice on the page
-        # (two links), so dump the duplicates.
+        # Each uuid string appears twice: dump the duplicates.
         return set(jobs)
 
-    def get_job(self, uuid) -> object:
+    def _get_job(self, uuid: str) -> BeautifulSoup:
         """
-        Browse the web page for that day and return a beautiful soup.
+        Get the page for that date and return a beautiful soup.
 
-        :param uuid: the job's uuid string request parameter
-        :return: cleaned up html as produced by bs4
+        :param uuid: the 'uuid' request parameter
+        :return: parsed html soup
         """
 
-        # Prepare the request and shoot
         url = self._server + 'll_detail.php5'
         payload = {'status': 'delivered', 'uuid': uuid}
+
         response = self._session.get(url, params=payload)
 
-        # Turn it into a digestible soup
-        # and filter out the tasty stuff
+        if self._DEBUG:
+            self._save_html(response.text, uuid)
+
+        # Parse the raw html text
         soup = BeautifulSoup(response.text)
+        # Return only what we need
         order_detail = soup.find(id='order_detail')
 
-        if self._DEBUG:
-            self._save_html(soup, uuid)
-
-        # TODO Make an assertion about the html that we get back?
         return order_detail
 
-    def _save_html(self, source, stamp, is_soup=True) -> str:
+    @staticmethod
+    def _save_html(raw_html: str, date: datetime=None, stamp: str=None) -> str:
         """
-        From the soup, prettify the html and save it to file.
+        Prettify the html and save it for debugging.
 
-        :param source: (tag object) the web page in soup form
+        :param raw_html: from the response object
+        :param date:
         :param stamp: (str) the job's identifier
         """
 
-        if is_soup:
-            text = source.prettify()
-        else:
-            text = source
 
-        path = '../output/' + self._sdate + '-' + stamp + '.html'
-        with open(path, 'w') as f:
-            f.write(text)
-            f.close()
 
-        return path
-
-    def _scrape_subset(self, blueprint, soup_subset) -> dict:
+    def _scrape_subset(self, blueprint: dict, soup_subset: BeautifulSoup) -> dict:
         """
         Scrape a sub-section of the html document using the blueprints.
 
-        :param blueprint: (dict) how to scrape each field
-        :param soup_subset: (tag object) the text inside an html tag in soup form
+        :param blueprint: the instructions
+        :param soup_subset: the html fragment
         :return: field name/value pairs
         """
 
@@ -194,7 +184,7 @@ class Miner:
         # Collect each field one by one, even if that
         # means returning to the same line several times.
         for name, field in blueprint.items():
-            match = re.match(field['pattern'], contents[field['line']])
+            match = re.match(field['pattern'], contents[field['line_number']])
             if match:
                 collected[name] = match.group(1)
             else:
@@ -203,50 +193,50 @@ class Miner:
                     # assign the dictionary key anyways:
                     collected[name] = None
                 else:
-                    # TODO Raise a warning when a non-optional field is not found
                     # If we fail to scrape a field that we actually need: ouch!
                     # Don't assign any key and make sure we give some feedback.
-                    self.__debug_message(name, field, contents)
+                    self._log_warning(name, field, contents)
+                    self._save_html()
 
         return collected
 
-    def scrape_job(self, soup) -> dict:
+    def _scrape_job(self, soup: BeautifulSoup) -> tuple:
         """
         Scrape out of a job's web page using BeautifulSoup and a little regex.
-        Job details and prices are returned as dictionaries, addresses as a list
-        of dictionaries. Values are returned as raw strings.
+        Job details are returned as a dictionary and addresses as a list of
+        dictionaries. Field values are returned as raw strings.
 
-        :param soup: (tag object) the job's web page in soup form
-        :return: details, prices, addresses
+        :param soup: the job's web page
+        :return: job_details and addresses as a tuple
         """
 
-        # Step 1: job details
-        job = dict()
+        # Step 1: scrape job details
+        job_details = dict()
 
+        # Step 1.1: everything except prices
         subsets = ['header', 'client', 'itinerary']
 
         for subset in subsets:
             soup_subset = soup.find_next(name=self._TAGS[subset]['name'])
             fields_subset = self._scrape_subset(self._BLUEPRINTS[subset], soup_subset)
-            job.update(fields_subset)
+            job_details.update(fields_subset)
 
-        # Step 2: the price table at the bottom of the page
+        # Step 1.2: the price table
         soup_subset = soup.find(self._TAGS['prices']['name'])
         prices = self._scrape_prices(soup_subset)
-        job.update(prices)
+        job_details.update(prices)
 
-        # Step 3: an arbitrary number of addresses
-        soup_subsets = soup.find_all(
-            name=self._TAGS['address']['name'],
-            attrs=self._TAGS['address']['attrs']
-        )
+        # Step 2: scrape an arbitrary number of addresses
+        soup_subsets = soup.find_all(name=self._TAGS['address']['name'],
+                                     attrs=self._TAGS['address']['attrs'])
 
         addresses = list()
         for soup_subset in soup_subsets:
             address = self._scrape_subset(self._BLUEPRINTS['address'], soup_subset)
             addresses.append(address)
 
-        return job, addresses
+        job = job_details, addresses
+        return job
 
     @staticmethod
     def _scrape_prices(soup_subset) -> dict:
@@ -285,24 +275,32 @@ class Miner:
 
         return price_table
 
-    def __debug_message(self, field: str, line_number: int, context: list):
+    def _add_warning(self, name: str, field: dict, context: list):
         """
-        Save a debug message showing the context where the scraping went wrong.
-        And while we're at it, save a copy of the html file for later inspection.
+        Store a debug message explaining where the scraping went wrong.
 
-        :param field: (str) the name of the field
-        :param line_number: (dict) the field information
-        :param item: (list) the section of the document
+        :param name: (str) the name of the field
+        :param field: (dict) the field blueprint
+        :param context: (list) the context as a list of lines
         """
 
-        seperator = '*' * 50
+        date_string = date.strftime('%d-%m-%Y')
 
-        self.debug_messages.append(seperator)
-        self.debug_messages.append('Could not scrape "{}" from "{}" on line {}\n'.format(
-            field,
-            context[line_number['line']],
-            line_number['line'])
-        )
-        for line_number, content in enumerate(context):
-            self.debug_messages.append(str(line_number) + ': ' + content)
-        self.debug_messages.append(seperator)
+        soup = BeautifulSoup(raw_html)
+        pretty_html = soup.prettify()
+
+        path = '../debug/' + date_string + '-' + stamp + '.html'
+
+        with open(path, 'w') as f:
+            f.write(pretty_html)
+            f.close()
+        self.debug_messages.append('*' * 50)
+
+        # The warning message
+        template = 'Could not scrape "{}" from "{}" on line {}\n'
+        warning = template.format(name, context[field['line_number']], field['line_number'])
+        self.warnings.append(warning)
+
+        # Give the full context.
+        for field, content in enumerate(context):
+            self.debug_messages.append(str(field) + ': ' + content)

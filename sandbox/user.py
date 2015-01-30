@@ -207,7 +207,7 @@ class Messenger:
         else:
             # Go browse the web summary page for that day
             # and scrape off the job uuid request parameters.
-            jobs = m.fetch_job_ids()
+            jobs = m._fetch_job_ids()
 
             # I don't work on weekends
             if not jobs:
@@ -219,8 +219,8 @@ class Messenger:
                     # the collected fields in a sensible manner.
                     # We don't pickle the data yet: instead, we
                     # pickle multiple days at once before exit.
-                    soup = m.get_job(j)
-                    raw_data = m.scrape_job(soup)
+                    soup = m._get_job(j)
+                    raw_data = m._scrape_job(soup)
                     m.process_job(raw_data)
 
                     # So wanna see results?
@@ -235,5 +235,5 @@ class Messenger:
                 # rate, but let's do better next time!
                 # TODO Hopefully remove this debug message later
                 self._rec('Mined: {} successfully!', date_string)
-                for message in m.debug_messages:
+                for message in m._warnings:
                     self._rec(message)
