@@ -24,12 +24,11 @@ def notify(message, *args):
 
     message = message.format(*args)
     timestamp = '{:%Y-%m-%d %H:%M:%S %fms}'.format(datetime.now())
-    notification = timestamp + ' | ' + message
-    print(notification)
+    print('%s | %s' % timestamp, message)
 
 
 def area():
-    """ Postal code area polygon
+    """ Postal code polygon area
     :return:
     """
     pass

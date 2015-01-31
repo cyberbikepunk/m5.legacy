@@ -26,7 +26,7 @@ class Miner:
                  prices={'name': 'tbody', 'attrs': None},
                  address={'name': 'div', 'attrs': {'data-collapsed': 'true'}})
 
-    # Each field has a regex blueprint.
+    # Each field has a regex instructions.
     _BLUEPRINTS = {'itinerary': dict(km={'line_number': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True}),
                    'header': dict(job_id={'line_number': 0, 'pattern': r'.*(\d{10})', 'optional': True},
                                   cash_payment={'line_number': 0, 'pattern': '(BAR)', 'optional': True}),
@@ -74,7 +74,7 @@ class Miner:
 
             # Go browse the summary page for that day
             # and scrape off uuid parameters.
-            uuids = self._grab_uuids(date)
+            uuids = self.scrape_uuids(date)
 
             # Was it a working day?
             if uuids:
@@ -102,16 +102,11 @@ class Miner:
         Unserialize the fields, geocode each address and return a table
         of checkpoints (with possible duplicates) and a table of checkins.
 
-        Checkpoints table:
-            - a list of tuples(checkpoint_id, job_ids, checkpoint)
-            - checkpoint_id: a unique string (primary key)
-            - job_ids: a set of correspon job ids (secondary key)
-            - checkpoint: a dictionnay of name/value pairs
-
+        """
 
         pass
 
-    def _grab_uuids(self, date: datetime) -> set:
+    def scrape_uuids(self, date: datetime) -> set:
         """
         Return unique uuid request parameters for each
         job by scraping the overview page for that date.
@@ -151,11 +146,11 @@ class Miner:
 
         return job
 
-    def _scrape_subset(self, blueprint: dict, soup_subset: BeautifulSoup) -> dict:
+    def _scrape_fragment(self, blueprint: dict, soup_fragment: BeautifulSoup) -> dict:
         """ Scrape a fragment of the page. In goes the blueprint, out comes a dictionnary.
 
         :param blueprint: the instructions
-        :param soup_subset: a parsed html fragment
+        :param soup_fragment: a parsed html fragment
         :return: field name/value pairs
         """
 
@@ -167,7 +162,7 @@ class Miner:
         # show-stopper but we should know about it!
 
         # Split the inner contents of the html tag into a list of lines
-        contents = list(soup_subset.stripped_strings)
+        contents = list(soup_fragment.stripped_strings)
 
         collected = dict()
 
@@ -206,26 +201,26 @@ class Miner:
         job_details = dict()
 
         # Step 1.1: everything except prices
-        subsets = ['header', 'client', 'itinerary']
+        fragments = ['header', 'client', 'itinerary']
 
-        for subset in subsets:
-            soup_subset = soup.find_next(name=self._TAGS[subset]['name'])
-            fields_subset = self._scrape_subset(self._BLUEPRINTS[subset],
-                                                soup_subset)
+        for fragment in fragments:
+            soup_fragment = soup.find_next(name=self._TAGS[fragment]['name'])
+            fields_subset = self._scrape_fragment(self._BLUEPRINTS[fragment],
+                                                  soup_fragment)
             job_details.update(fields_subset)
 
         # Step 1.2: the price table
-        soup_subset = soup.find(self._TAGS['prices']['name'])
-        prices = self._scrape_prices(soup_subset)
+        soup_fragment = soup.find(self._TAGS['prices']['name'])
+        prices = self._scrape_prices(soup_fragment)
 
         job_details.update(prices)
 
         # Step 2: scrape an arbitrary number of addresses
-        soup_subsets = soup.find_all(name=self._TAGS['address']['name'],
-                                     attrs=self._TAGS['address']['attrs'])
+        soup_fragments = soup.find_all(name=self._TAGS['address']['name'],
+                                       attrs=self._TAGS['address']['attrs'])
         addresses = list()
-        for soup_subset in soup_subsets:
-            address = self._scrape_subset(self._BLUEPRINTS['address'], soup_subset)
+        for soup_fragment in soup_fragments:
+            address = self._scrape_fragment(self._BLUEPRINTS['address'], soup_fragment)
 
             addresses.append(address)
 
@@ -233,18 +228,18 @@ class Miner:
         return job
 
     @staticmethod
-    def _scrape_prices(soup_subset: BeautifulSoup) -> dict:
+    def _scrape_prices(soup_fragment: BeautifulSoup) -> dict:
         """
         Scrape the 'prices' table at the bottom of the page. This section is
         scraped seperately because it's already neatly formatted as a table.
 
-        :param soup_subset: parsed html
+        :param soup_fragment: parsed html
         :return: item/price pairs
         """
 
         # The table is scraped as a one-dimensional list
         # of cells but we want it in dictionary format.
-        cells = list(soup_subset.stripped_strings)
+        cells = list(soup_fragment.stripped_strings)
         price_table = dict(zip(cells[::2], cells[1::2]))
 
         # Original field names are no good. Change them.

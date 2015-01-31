@@ -1,4 +1,4 @@
-"""  The database class and descendants """
+"""  The database class and extention classes. """
 
 from pickle import load, dump
 from os.path import isdir
@@ -86,6 +86,12 @@ class Database:
 
 class Checkpoint(Database):
     """ A checkpoint is a geographic position. There's no time dimension.
+            Checkpoints table:
+            - a list of tuples(checkpoint_id, job_ids, checkpoint)
+            - checkpoint_id: a unique string (primary key)
+            - job_ids: a set of correspon job ids (secondary key)
+            - checkpoint: a dictionnay of name/value pairs
+
     """
 
     def serialize(self) -> str:

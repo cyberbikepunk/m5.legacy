@@ -41,13 +41,15 @@ class User:
             self._password = getpass('Enter password: ')
 
         login_url = self._server + 'll.php5'
-        credentials = {'username': self.username, 'password': self._password}
+        credentials = {'username': self.username,
+                       'password': self._password}
 
-        # Pretend we're browsing
-        headers = {'user-agent': 'Mozilla/5.0 Firefox/31.0'}
+        # Pretend
+        headers = {'user-agent': 'Mozilla/5.0'}
         self._session.headers.update(headers)
 
         response = self._session.post(login_url, credentials)
+
         if not response.ok:
             self._authenticate()
         else:
