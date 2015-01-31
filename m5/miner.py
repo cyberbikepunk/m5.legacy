@@ -202,6 +202,7 @@ class Miner:
 
         # Step 1.1: everything except prices
         fragments = ['header', 'client', 'itinerary']
+        # TODO Generate blueprints on the fly
 
         for fragment in fragments:
             soup_fragment = soup.find_next(name=self._TAGS[fragment]['name'])
