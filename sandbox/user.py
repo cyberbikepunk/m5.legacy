@@ -207,7 +207,7 @@ class Messenger:
         else:
             # Go browse the web summary page for that day
             # and scrape off the job uuid request parameters.
-            jobs = m._fetch_uuids()
+            jobs = m._grab_uuids()
 
             # I don't work on weekends
             if not jobs:
@@ -220,7 +220,7 @@ class Messenger:
                     # We don't pickle the data yet: instead, we
                     # pickle multiple days at once before exit.
                     soup = m._get_job(j)
-                    raw_data = m._scrape_job(soup)
+                    raw_data = m._scrape(soup)
                     m.process_job(raw_data)
 
                     # So wanna see results?

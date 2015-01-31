@@ -19,7 +19,7 @@ class Miner:
 
     _DEBUG = True
 
-    # Specify the relevant tags in the DOM tree.
+    # Some tags are a target.
     _TAGS = dict(header={'name': 'h2', 'attrs': None},
                  client={'name': 'h4', 'attrs': None},
                  itinerary={'name': 'p', 'attrs': None},
@@ -54,16 +54,15 @@ class Miner:
         self._server = server
         self._session = session
 
-        # State attributes
+        # Currently mining the
+        # following date and job number
         self._date = datetime(1, 1, 1)
         self._uuid = str()
 
     @time_me
     @log_me
     def mine(self) -> list:
-        """
-        Mine a set of dates from the server.
-
+        """ Mine a set of dates from the server.
         :return: a list of (jobs, addresses) tuples
         """
 
@@ -74,8 +73,8 @@ class Miner:
             self._date = date
 
             # Go browse the summary page for that day
-            # and scrape off 'uuid' parameters.
-            uuids = self._fetch_uuids(date)
+            # and scrape off uuid parameters.
+            uuids = self._grab_uuids(date)
 
             # Was it a working day?
             if uuids:
@@ -83,7 +82,7 @@ class Miner:
                     self._uuid = uuid
 
                     soup = self._get_job(uuid)
-                    job = self._scrape_job(soup)
+                    job = self._scrape(soup)
 
                     if self._DEBUG:
                         pp.pprint(job)
@@ -109,20 +108,16 @@ class Miner:
             - job_ids: a set of correspon job ids (secondary key)
             - checkpoint: a dictionnay of name/value pairs
 
-        Checkins table: tuple(checkin_id, job_id, checkin)
-            - checkin_id: a unique string (primary key)
-            - job_ids: a set of matching job ids (secondary key)
-            - ckeckin: a dictionnay of name/value pairs
-        """
+
         pass
 
-    def _fetch_uuids(self, date: datetime) -> set:
+    def _grab_uuids(self, date: datetime) -> set:
         """
-        Return unique 'uuid' request parameters for each job
-        by scraping the overview page for that date.
+        Return unique uuid request parameters for each
+        job by scraping the overview page for that date.
 
         :param date: a single day
-        :return: A set of 'uuid' strings
+        :return: A set of uuid strings
         """
 
         url = self._server + 'll.php5'
@@ -138,10 +133,9 @@ class Miner:
         return set(jobs)
 
     def _get_job(self, uuid: str) -> BeautifulSoup:
-        """
-        Get the page for that date and return a soup.
+        """ Get the page for that date and return a soup.
 
-        :param uuid: the 'uuid' request parameter
+        :param uuid: the uuid request parameter
         :return: parsed html soup
         """
 
@@ -150,19 +144,18 @@ class Miner:
 
         response = self._session.get(url, params=payload)
 
-        # Parse the raw html text
+        # Parse the raw html text...
         soup = BeautifulSoup(response.text)
-        # Return only what we need
-        order_detail = soup.find(id='order_detail')
+        # ...and keep only what we need.
+        job = soup.find(id='order_detail')
 
-        return order_detail
+        return job
 
     def _scrape_subset(self, blueprint: dict, soup_subset: BeautifulSoup) -> dict:
-        """
-        Scrape a sub-section of the html document using the blueprints.
+        """ Scrape a fragment of the page. In goes the blueprint, out comes a dictionnary.
 
         :param blueprint: the instructions
-        :param soup_subset: the html fragment
+        :param soup_subset: a parsed html fragment
         :return: field name/value pairs
         """
 
@@ -193,15 +186,17 @@ class Miner:
                     # If we fail to scrape a field that we actually need: ouch!
                     # Don't assign any key and make sure we give some feedback.
                     message = 'Failed to scrape {}: {}ll_detail.php5?status=delivered&uuid={}'
-                    notify(message, field_name, self._server, self._uuid)
+                    notify(message,
+                           field_name,
+                           self._server,
+                           self._uuid)
 
         return collected
 
-    def _scrape_job(self, soup: BeautifulSoup) -> tuple:
+    def _scrape(self, soup: BeautifulSoup) -> tuple:
         """
-        Scrape out of a job's web page using BeautifulSoup and a little regex.
-        Job details are returned as a dictionary and addresses as a list of
-        dictionaries. Field values are returned as raw strings.
+        Scrape out of a job's web page using bs4 and re modules.
+        In comes the soup, out go field name/value pairs as raw strings.
 
         :param soup: the job's web page
         :return: job_details and addresses as a tuple
@@ -215,34 +210,36 @@ class Miner:
 
         for subset in subsets:
             soup_subset = soup.find_next(name=self._TAGS[subset]['name'])
-            fields_subset = self._scrape_subset(self._BLUEPRINTS[subset], soup_subset)
+            fields_subset = self._scrape_subset(self._BLUEPRINTS[subset],
+                                                soup_subset)
             job_details.update(fields_subset)
 
         # Step 1.2: the price table
         soup_subset = soup.find(self._TAGS['prices']['name'])
         prices = self._scrape_prices(soup_subset)
+
         job_details.update(prices)
 
         # Step 2: scrape an arbitrary number of addresses
         soup_subsets = soup.find_all(name=self._TAGS['address']['name'],
                                      attrs=self._TAGS['address']['attrs'])
-
         addresses = list()
         for soup_subset in soup_subsets:
             address = self._scrape_subset(self._BLUEPRINTS['address'], soup_subset)
+
             addresses.append(address)
 
         job = job_details, addresses
         return job
 
     @staticmethod
-    def _scrape_prices(soup_subset) -> dict:
+    def _scrape_prices(soup_subset: BeautifulSoup) -> dict:
         """
         Scrape the 'prices' table at the bottom of the page. This section is
         scraped seperately because it's already neatly formatted as a table.
 
-        :param soup_subset: (tag object) cleaned up html
-        :return: field name/value pairs
+        :param soup_subset: parsed html
+        :return: item/price pairs
         """
 
         # The table is scraped as a one-dimensional list
@@ -250,8 +247,7 @@ class Miner:
         cells = list(soup_subset.stripped_strings)
         price_table = dict(zip(cells[::2], cells[1::2]))
 
-        # Original field names are no good. Change theself.
-        # Note: there are several flavours of overnights.
+        # Original field names are no good. Change them.
         keys = [('Stadtkurier', 'city_tour'),
                 ('Stadt Stopp(s)', 'extra_stops'),
                 ('OV Ex Nat PU', 'overnight'),
@@ -266,7 +262,8 @@ class Miner:
         # The waiting time cell has the time in minutes
         # as well as the price. We just want the price.
         if 'waiting_time' in price_table.keys():
-            price_table['waiting_time'] = price_table['waiting_time'][7::]
+            price_table['waiting_time'] = \
+                price_table['waiting_time'][7::]
 
         return price_table
 

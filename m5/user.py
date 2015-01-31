@@ -22,6 +22,7 @@ class User:
 
         self.username = username
         self._password = password
+
         # The company server
         self._server = 'http://bamboo-mec.de/'
         self._session = Session()
@@ -46,7 +47,6 @@ class User:
         headers = {'user-agent': 'Mozilla/5.0 Firefox/31.0'}
         self._session.headers.update(headers)
 
-        # Make a login attempt
         response = self._session.post(login_url, credentials)
         if not response.ok:
             self._authenticate()
@@ -69,7 +69,7 @@ class User:
         response = self._session.get(url, params=payload)
 
         if response.history[0].status_code == 302:
-            # 302: We have been redirected to the home page
+            # We have been redirected to the home page
             notify('Logged out successfully. Goodbye!')
 
         self._session.close()

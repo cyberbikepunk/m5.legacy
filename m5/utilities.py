@@ -28,4 +28,8 @@ def notify(message, *args):
     print(notification)
 
 
-
+def area():
+    """ Postal code area polygon
+    :return:
+    """
+    pass
