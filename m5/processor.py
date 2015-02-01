@@ -4,10 +4,10 @@ __author__ = 'opabinia'
 
 from geopy.geocoders import Nominatim
 
-from m5.model import Model
+from m5.model import Database
 
 
-class Processor(Model):
+class Processor(Database):
     """
     The processor takes freshly scraped data by the miner
     and returns tables that can be merged into the database.
@@ -16,7 +16,7 @@ class Processor(Model):
     pass
 
 
-class Checkpoint(Model):
+class Checkpoint(Database):
 
     def _unserialize(self) -> dict:
         pass

@@ -1,79 +1,81 @@
-""" Model class and descendants. """
+""" This module holds the database model """
+
+from sqlalchemy import Table, Column, ForeignKey, ColumnDefault
+from sqlalchemy.types import Integer, Float, String, Boolean, Enum, DateTime
+from sqlalchemy.orm import relationship, backref
+from sqlalchemy.ext.declarative import declarative_base
+
+from sqlalchemy.dialects.sqlite import
+
+Base = declarative_base()
 
 
-from datetime import datetime
+def initilialize(metadata):
+
+    Table('checkpoints', metadata,
+          Column('company', String, default=None),
+          Column('address', String, default=None),
+          Column('city', String, default=None),
+          Column('postal_code', Integer, default=None),
+          Column('lat', Float, default=None),
+          Column('lon', Float), default=None)
+
+    Table('orders', metadata,
+          Column('id', Integer, primary_key=True),
+          Column('checkpoint_id', ForeignKey('checkpoints.id')),
+          Column('distance', Float, default=0),
+          Column('cash_payment', Boolean, default=False))
+
+    Table('checkins', metadata,
+          Column('id', Integer, primary_key=True),
+          Column('checkpoint_id', ForeignKey('checkpoints.id')),
+          Column('order_id', Float, default=0),
+          Column('drop_off', Boolean, default=None),
+          Column('pickup', Boolean, default=None),
+          Column('timestamp', DateTime, default=None),
+          Column('after', DateTime, default=None),
+          Column('until', Boolean, default=None),
+          Column('purpose', String, default=None))
+
+    Table('blueprints', metadata,
+          Column('line_number', Integer),
+          Column('regex'),
+          Column('tag', String),
+          Column('optional'))
+
+    Table('tag', metadata,
+          Column('name', String),
+          Column('attrs', String))
+
+    Table('sometable', metadata, Column('id', Integer, primary_key=True), sqlite_autoincrement=True)
 
 
-class Model():
-    """ Manage the database Model. """
+class Checkpoints(Base):
+    """ Checkpoints are a geographical point. They have no time dimension.
+    """
 
-    def __init__(self):
-        pass
+    __tablename__ = 'checkpoints'
 
-    DATABASE = {}
+    Column('checkpoint_id', Integer, primary_key=True),
+    Column('order_id', ForeignKey('orders.id')),
 
-    # A tuple of 3 matching lists representing
-    # fields, primary key & secondary keys
-    TABLE = [dict()], [None], [list()]
-    CHECKPOINTS = dict(
-        job_id={'blueprint': None,
-                'type': int, 'unit': None, 'optional': False, 'default': None,
-                'primary': False, 'secondary': True},
-        company={'blueprint': None,
-                 'type': str, 'unit': None, 'optional': True, 'default': None,
-                 'primary': False, 'secondary': False},
-        address={'blueprint': None,
-                 'type': str, 'unit': None, 'optional': False, 'default': None,
-                 'primary': False, 'secondary': False},
-        client_id={'blueprint': None,
-                   'type': int, 'unit': None, 'optional': False, 'default': None,
-                   'primary': False, 'secondary': True},
-        client_name={'blueprint': None,
-                     'type': str, 'unit': None, 'optional': True, 'default': None,
-                     'primary': False, 'secondary': False},
-        city={'blueprint': None,
-              'type': str, 'unit': None, 'optional': True, 'default': 'Berlin',
-              'primary': False, 'secondary': False},
-        postal_code={'blueprint': None,
-                     'type': int, 'unit': None, 'optional': False, 'default': None,
-                     'primary': False, 'secondary': False},
-        checkpoint_id={'blueprint': None,
-                       'type': int, 'unit': None, 'optional': False, 'default': None,
-                       'primary': True, 'secondary': False}
-    )
 
-    CHECKINS = dict(
-        after={'blueprint': None,
-               'type': datetime, 'unit': None, 'optional': True, 'default': None,
-               'primary': False, 'secondary': False},
-        until={'blueprint': None,
-               'type': datetime, 'unit': None, 'optional': True, 'default': None,
-               'primary': True, 'secondary': False},
-        job_id={'blueprint': None,
-                'type': int, 'unit': None, 'optional': False, 'default': None,
-                'primary': False, 'secondary': True},
-        timestamp={'blueprint': None,
-                   'type': int, 'unit': None, 'optional': False, 'default': None,
-                   'primary': True, 'secondary': False},
-        checkin_id={'blueprint': None,
-                    'type': int, 'unit': None, 'optional': False, 'default': None,
-                    'primary': True, 'secondary': False},
-        checkpoint_id={'blueprint': None,
-                       'type': int, 'unit': None, 'optional': False, 'default': None,
-                       'primary': False, 'secondary': True}
-    )
+    children = relationship('Child')
 
-    _BLUEPRINTS = dict(km={'line_number': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True},
-                       job_id={'line_number': 0, 'pattern': r'.*(\d{10})', 'optional': True},
-                       cash_payment={'line_number': 0, 'pattern': '(BAR)', 'optional': True},
-                       client_id={'line_number': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
-                       client_name={'line_number': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False},
-                       company={'line_number': 1, 'pattern': r'(.*)', 'optional': False},
-                       address={'line_number': 2, 'pattern': r'(.*)', 'optional': False},
-                       city={'line_number': 3, 'pattern': r'(?:\d{5})\s(.*)', 'optional': False},
-                       postal_code={'line_number': 3, 'pattern': r'(\d{5})(?:.*)', 'optional': False},
-                       after={'line_number': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
-                       purpose={'line_number': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
-                       timestamp={'line_number': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
-                       until={'line_number': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True})
+
+class Orders(Base):
+    __tablename__ = 'orders'
+    id = Column(Integer, primary_key=True)
+    parent_id = Column(Integer, ForeignKey('parent.id'))
+
+from sqlalchemy.engine import Engine
+from sqlalchemy import event
+
+
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 

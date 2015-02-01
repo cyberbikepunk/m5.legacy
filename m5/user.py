@@ -1,10 +1,9 @@
 """ User classes and related stuff. """
 
-
-from requests import Session
 from getpass import getpass
 
-from m5.database import Database
+from requests import Session
+from sandbox.database import Database
 from m5.utilities import notify, log_me, safe_request
 
 
