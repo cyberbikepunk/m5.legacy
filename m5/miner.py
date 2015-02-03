@@ -29,7 +29,7 @@ class Miner:
     # Each field has a regex instructions.
     _BLUEPRINTS = {'itinerary': dict(km={'line_number': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True}),
                    'header': dict(job_id={'line_number': 0, 'pattern': r'.*(\d{10})', 'optional': True},
-                                  cash_payment={'line_number': 0, 'pattern': '(BAR)', 'optional': True}),
+                                  cash_payment={'line_number': 0, 'pattern': r'(BAR)', 'optional': True}),
                    'client': dict(client_id={'line_number': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
                                   client_name={'line_number': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False}),
                    'adddress': dict(company={'line_number': 1, 'pattern': r'(.*)', 'optional': False},
