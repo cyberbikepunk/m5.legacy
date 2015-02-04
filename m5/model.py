@@ -34,7 +34,7 @@ class Client(Base):
     # The client table has a one-to-many
     # relationship with the order table
     order_ids = Column(Integer, ForeignKey('order.order_id'))
-    orders = relationship('Order', backref='order')
+    # orders = relationship('Order', backref='orders')
 
     @synonym_for('client_id')
     @property
@@ -121,19 +121,27 @@ class Checkpoint(Base):
 if __name__ == '__main__':
     # test the module
 
-    engine = create_engine('sqlite:///:memory:', echo=True)
+    engine = create_engine('sqlite:///test.db', echo=True)
+    Base.metadata.create_all(engine)
 
     Session = sessionmaker(bind=engine)
     session = Session()
 
-    ci = Checkin(checkin_id=1, timestamp=datetime.now())
-    cp = Checkpoint(id='the_id', street_and_nb='Kreuzstrasse 14', postal_code='13187', city='Berlin')
-    od = Order(id=201412191780, distance=12.345, payesd_cash=False)
-    cl = Client(id=23462, name='Mickey Mouse')
+    ci = Checkin(checkin_id=datetime.now())
+    cp = Checkpoint(checkpoint_id='the_id', street_name='Kreuzstrasse', street_nb='14', postal_code='13187', city='Berlin')
+    od = Order(order_id=201412191780, distance=12.345, payed_cash=False)
+    cl = Client(client_id=23462, name='Mickey Mouse')
 
-    session.add_all()
+    session.add(ci)
+    session.add(cp)
+    session.add(od)
+    session.add(cl)
+
+    session.commit()
 
     print(ci)
     print(cp)
     print(od)
     print(cl)
+
+    print(ci.checkin_id)
