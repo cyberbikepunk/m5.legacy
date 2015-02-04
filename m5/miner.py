@@ -12,9 +12,8 @@ from m5.utilities import notify, log_me, time_me
 
 class Miner:
     """
-    The 'mine' method scrapes off data from the company server.
-    It's the only public method in the class. Everything else
-    is low-level internals.
+    The 'mine' method scrapes off data from the company server. It's the
+    only public method in the class. Everything else is low-level internals.
     """
 
     _DEBUG = True

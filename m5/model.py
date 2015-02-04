@@ -1,171 +1,139 @@
 """ This module defines our local database model. """
 
-from sqlalchemy import Column, ForeignKey
-from sqlalchemy.types import Integer, Float, String, Boolean, Enum, DateTime, Unicode
-from sqlalchemy.orm import sessionmaker, relationship
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import create_engine
-
 from datetime import datetime
 
+from sqlalchemy import Table, Column, ForeignKey
+from sqlalchemy.types import Integer, Float, String, Boolean, Enum, DateTime, Time
+from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.ext.declarative import declarative_base, synonym_for
+from sqlalchemy import create_engine
+
+# We use the declarative way
+# to construct our metadata
 Base = declarative_base()
-print('\nBase: %s' % Base)
+
+# There is a bidirectional many-to-many relationship
+# between the order and checkpoint tables. We need
+# an intermediate association table for this to work.
+orders_to_checkpoints = Table('association',
+                              Base.metadata,
+                              Column('order_id', Integer, ForeignKey('checkpoint.checkpoint_id')),
+                              Column('checkpoint_id', String, ForeignKey('order.order_id')))
 
 
 class Client(Base):
-    """
-    One client can place mulitple orders. By extention it has many checkins and checkpoints.
-    """
+    """ The client table. One client can place many orders. """
 
     __tablename__ = 'client'
 
-    client_id = Column(Integer, primary_key=True)
+    # We use the unique 5-digit client number as the primary key
+    client_id = Column(Integer, primary_key=True, autoincrement=False)
 
-    order_ids = Column(Integer, ForeignKey('order.id'))
-    checkin_ids = Column(Integer, ForeignKey('checkin.id'))
-    checkpoint_ids = Column(Unicode, ForeignKey('checkpoint.id'))
+    name = Column(String)
 
-    client_nb = Column(Integer, info={'regex': r'.*(\d{5})$',
-                                      'required': True,
-                                      'fragment': 'client',
-                                      'line_nb': 0})
-    client_name = Column(String, info={'regex': r'Kunde:\s(.*)\s\|',
-                                       'required': True,
-                                       'fragment': 'client',
-                                       'line_nb': 0})
+    # The client table has a one-to-many
+    # relationship with the order table
+    order_ids = Column(Integer, ForeignKey('order.order_id'))
+    orders = relationship('Order', backref='order')
 
-    orders = relationship('Order')
-    checkpoints = relationship('Checkpoint')
-    checkins = relationship('Checkin')
+    @synonym_for('client_id')
+    @property
+    def id(self):
+        """ Return a standard name for the primary key. """
+        return self.client_id
 
 
 class Order(Base):
-    """
-    Orders hold information about a job, like .
-    Each order is related to an arbitrary number of checkpoints and checkins.
-    """
+    """ The order table. An order is related to a single client. """
 
     __tablename__ = 'order'
 
-    order_id = Column(Integer, primary_key=True)
+    # We use the unique 12-digit order number as the primary key
+    order_id = Column(Integer, primary_key=True, autoincrement=False)
 
-    checkin_ids = Column(Integer, ForeignKey('checkin.id'))
-    checkpoint_ids = Column(Unicode, ForeignKey('checkpoint.id'))
-    client_ids = Column(Integer, ForeignKey('client.id'))
+    type = Column(Enum('city_tour', 'overnight', 'timed'))
+    payed_cash = Column(Boolean)
+    distance = Column(Float)
 
-    order_nb = Column(Integer, info={'regex': r'.*(\d{10})',
-                                     'required': True,
-                                     'fragment': 'header',
-                                     'line_nb': 0})
-    cash_payment = Column(Boolean, info={'regex': r'(BAR)',
-                                         'required': False,
-                                         'fragment': 'header',
-                                         'line_nb': 0})
-    distance = Column(Float, info={'regex': r'(\d{1,2},\d{3})\skm',
-                                   'required': False,
-                                   'fragment': 'itinerary',
-                                   'line_nb': 0})
+    # The order table has a many-to-one
+    # relationship with the client table
+    client_id = Column(Integer, ForeignKey('client.client_id'))
 
-    overnight = Column(Boolean, default=False)
-    logistics = Column(Boolean, default=False)
-
-    order = relationship('Order')
-    checkpoint = relationship('Checkpoint')
+    @synonym_for('order_id')
+    @property
+    def id(self):
+        """ Return a standard name for the primary key. """
+        return self.order_id
 
 
 class Checkin(Base):
-    """
-    A checkin is a timestamp. There is no geographical dimension.
-    Each checkin is related to one order and one checkpoint.
-    """
+    """ The check-in table. A checkin is a timestamp linked to an address. """
 
     __tablename__ = 'checkin'
 
-    checkin_id = Column(Integer, primary_key=True)
-    order_ids = Column(Integer, ForeignKey('order.id'))
-    checkpoint_ids = Column(Unicode, ForeignKey('checkpoint.id'))
+    # We use the check-in timestamp as the primary key
+    checkin_id = Column(DateTime, primary_key=True, autoincrement=False)
 
-    timestamp = Column(DateTime, info={'regex': r'ST:\s(\d{2}:\d{2})',
-                                       'required': True,
-                                       'fragment': 'address',
-                                       'line_nb': -2})
-    after = Column(DateTime, info={'regex': r'(?:.*)ab\s(\d{2}:\d{2})',
-                                   'required': False,
-                                   'fragment': 'address',
-                                   'line_nb': 2})
-    until = Column(DateTime, info={'regex': r'(?:.*)bis\s+(\d{2}:\d{2})',
-                                   'required': False,
-                                   'fragment': 'address',
-                                   'line_nb': -3})
-    purpose = Column(Enum('pickup', 'dropoff'), info={'regex': r'(?:\d{5})\s(.*)',
-                                                      'required': True,
-                                                      'fragment': 'address',
-                                                      'line_nb': 3})
-    overnight = Column(Boolean, default=False)
-    logistics = Column(Boolean, default=False)
+    purpose = Column(Enum('pickup', 'dropoff', 'begin', 'end'))
+    after = Column(Time)
+    until = Column(Time)
 
-    order = relationship('Order')
-    checkpoint = relationship('Checkpoint')
+    # The check-in table has a bidirectional many-to-one relationship with address table
+    checkpoint_id = ForeignKey('checkpoint.checkpoint_id')
 
-    def __repr__(self):
-        return "<Checkin(%s, Order %s, Checkpoint: %s)>" % (self.timestamp, self.order_id, self.checkpoint_id)
+    @synonym_for('timestamp')
+    @property
+    def id(self):
+        """ Return a standard name for the primary key. """
+        return self.timestamp
 
 
 class Checkpoint(Base):
-    """
-    A checkpoint is a geographical point. There is no time dimension.
-    One checkpoint may be associated with mulitple orders and checkins.
-    """
+    """ The checkpoint table. A checkpoint can be checked-in multiple times. """
 
-    __tablename__ = 'checkpoints'
+    __tablename__ = 'checkpoint'
 
-    checkpoint_id = Column(Unicode, primary_key=True)
-    order_ids = Column(Integer, ForeignKey('order.id'))
-    checkin_ids = Column(Integer, ForeignKey('checkpoint.id'))
+    # We use the unique string returned by the geo-coder as the primary key
+    checkpoint_id = Column(String, primary_key=True, autoincrement=False)
+    order_ids = Column(Integer, ForeignKey('order.order_id'))
+    checkin_ids = Column(DateTime, ForeignKey('checkin.checkin_id'))
 
-    company = Column(String, info={'regex': r'(.*)',
-                                   'required': False,
-                                   'fragment': 'address',
-                                   'line_nb': 1})
-    street_and_nb = Column(String, info={'regex': r'(.*)',
-                                         'required': True,
-                                         'fragment': 'address',
-                                         'line_nb': 2})
-    postal_code = Column(Integer, info={'regex': r'(\d{5})(?:.*)',
-                                        'required': True,
-                                        'fragment': 'address',
-                                        'line_nb': 3})
-    city = Column(String, default='Berlin', info={'regex': r'(?:\d{5})\s(.*)',
-                                                  'required': False,
-                                                  'fragment': 'address',
-                                                  'line_nb': 3})
-    lat = Column(Float, info={'unit': '°N'})
-    lon = Column(Float, info={'unit': '°E'})
+    company = Column(String)
+    street_nb = Column(Integer)
+    street_name = Column(String)
+    postal_code = Column(Integer)
+    city = Column(String)
+    lat = Column(Float)
+    lon = Column(Float)
 
-    nb = Column(Integer)
-    street = Column(String)
-    full_address = Column(String)
+    # The check-in has a bidirectional one-to-many relationship with address table...
+    checkins = relationship('Checkin', backref='checkpoint')
+    # ... and a bidirectional many-to-many relationship with the order table
+    orders = relationship('Order', backref='checkpoints', secondary=orders_to_checkpoints)
 
-    orders = relationship('Order')
-    checkins = relationship('Checkins')
+    @synonym_for('checkpoint_id')
+    @property
+    def id(self):
+        """ Return a standard name for the primary key. """
+        return self.checkpoint_id
 
-    def __repr__(self):
-        return "<Checkpoints(%s, %s %s)>" % (self.address, self.city, self.postal_code)
 
 if __name__ == '__main__':
     # test the module
 
     engine = create_engine('sqlite:///:memory:', echo=True)
-    print(engine)
 
     Session = sessionmaker(bind=engine)
     session = Session()
-    print(Session)
 
     ci = Checkin(checkin_id=1, timestamp=datetime.now())
-    cp = Checkpoint(checkpoint_id='the_id', street_and_nb='Kreuzstrasse 14', postal_code='13187', city='Berlin')
-    session.add(cp)
-    session.add(ci)
+    cp = Checkpoint(id='the_id', street_and_nb='Kreuzstrasse 14', postal_code='13187', city='Berlin')
+    od = Order(id=201412191780, distance=12.345, payesd_cash=False)
+    cl = Client(id=23462, name='Mickey Mouse')
 
-    print(ci.timestamp)
-    print(cp.street_and_nb)
+    session.add_all()
+
+    print(ci)
+    print(cp)
+    print(od)
+    print(cl)
