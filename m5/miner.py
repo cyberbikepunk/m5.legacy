@@ -1,4 +1,5 @@
 """ Miner classes and related stuff. """
+from os.path import isfile
 
 import re
 
@@ -26,37 +27,38 @@ class Miner:
                  address={'name': 'div', 'attrs': {'data-collapsed': 'true'}})
 
     # Each field has a regex instructions.
-    _BLUEPRINTS = {'itinerary': dict(km={'line_number': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True}),
-                   'header': dict(job_id={'line_number': 0, 'pattern': r'.*(\d{10})', 'optional': True},
-                                  cash_payment={'line_number': 0, 'pattern': r'(BAR)', 'optional': True}),
-                   'client': dict(client_id={'line_number': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
-                                  client_name={'line_number': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False}),
-                   'adddress': dict(company={'line_number': 1, 'pattern': r'(.*)', 'optional': False},
-                                    address={'line_number': 2, 'pattern': r'(.*)', 'optional': False},
-                                    city={'line_number': 3, 'pattern': r'(?:\d{5})\s(.*)', 'optional': False},
-                                    postal_code={'line_number': 3, 'pattern': r'(\d{5})(?:.*)', 'optional': False},
-                                    after={'line_number': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
-                                    purpose={'line_number': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
-                                    timestamp={'line_number': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
-                                    until={'line_number': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True}))
+    _BLUEPRINTS = {'itinerary': dict(km={'line_nb': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True}),
+                   'header': dict(job_id={'line_nb': 0, 'pattern': r'.*(\d{10})', 'optional': True},
+                                  cash_payment={'line_nb': 0, 'pattern': r'(BAR)', 'optional': True}),
+                   'client': dict(client_id={'line_nb': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
+                                  client_name={'line_nb': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False}),
+                   'adddress': dict(company={'line_nb': 1, 'pattern': r'(.*)', 'optional': False},
+                                    address={'line_nb': 2, 'pattern': r'(.*)', 'optional': False},
+                                    city={'line_nb': 3, 'pattern': r'(?:\d{5})\s(.*)', 'optional': False},
+                                    postal_code={'line_nb': 3, 'pattern': r'(\d{5})(?:.*)', 'optional': False},
+                                    after={'line_nb': -3, 'pattern': r'(?:.*)ab\s(\d{2}:\d{2})', 'optional': True},
+                                    purpose={'line_nb': 0, 'pattern': r'(Abholung|Zustellung)', 'optional': False},
+                                    timestamp={'line_nb': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
+                                    until={'line_nb': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True})}
 
-    def __init__(self, dates: set, server: str, session: Session):
+    def __init__(self, user: str, date: datetime, server: str, session: Session):
         """
-        Instantiate a Miner object for a set of dates.
+        Instantiate a Miner object for a given user and date.
 
-        :param dates: a set of datetime objects
+        :param user: the current user
+        :param date: a datetime object
         :param server: the url of the server
         :param session: the current
         """
 
-        self.dates = dates
+        self.date = date
         self._server = server
         self._session = session
+        self.user = user
 
-        # Currently mining the
-        # following date and job number
-        self._date = datetime(1, 1, 1)
-        self._uuid = str()
+    def filename(self, uuid):
+        """ Return the filename for that job """
+        return '%s_%s.html' % (self.date.strftime('%Y-%m-%d'), uuid)
 
     @time_me
     @log_me
@@ -68,42 +70,29 @@ class Miner:
         jobs = list()
         pp = PrettyPrinter()
 
-        for date in self.dates:
-            self._date = date
+        # Go browse the summary page for that day
+        # and scrape off uuid parameters.
+        uuids = self.scrape_uuids(date)
 
-            # Go browse the summary page for that day
-            # and scrape off uuid parameters.
-            uuids = self.scrape_uuids(date)
+        # Was it a working day?
+        if uuids:
+            for uuid in uuids:
 
-            # Was it a working day?
-            if uuids:
-                for uuid in uuids:
-                    self._uuid = uuid
-
+                if self.is_cached(uuid):
+                    soup = self.load_job(uuid)
+                else:
                     soup = self._get_job(uuid)
-                    job = self._scrape(soup)
 
-                    if self._DEBUG:
-                        pp.pprint(job)
+                job = self._scrape(soup)
 
-                    jobs.append(jobs)
+                if self._DEBUG:
+                    pp.pprint(job)
 
-                notify('Mined {} OK.', date.strftime('%d-%m-%Y'))
+                jobs.append(jobs)
+
+                notify('Mined {} OK.', self.date.strftime('%d-%m-%Y'))
 
         return jobs
-
-    @log_me
-    def process(self, jobs: list) -> list:
-        """
-        Scraped data fields are returned as raw strings by the miner.
-        This is where the data gets processed before it can be stored to
-        the database.
-        Unserialize the fields, geocode each address and return a table
-        of checkpoints (with possible duplicates) and a table of checkins.
-
-        """
-
-        pass
 
     def scrape_uuids(self, date: datetime) -> set:
         """
@@ -140,7 +129,9 @@ class Miner:
 
         # Parse the raw html text...
         soup = BeautifulSoup(response.text)
-        # ...and keep only what we need.
+        # ... save the file for future reference...
+        self._save_job(soup, uuid)
+        # ...and send back only what we need.
         job = soup.find(id='order_detail')
 
         return job
@@ -168,7 +159,7 @@ class Miner:
         # Collect each field one by one, even if that
         # means returning to the same line several times.
         for field_name, field in blueprint.items():
-            match = re.match(field['pattern'], contents[field['line_number']])
+            match = re.match(field['pattern'], contents[field['line_nb']])
             if match:
                 collected[field_name] = match.group(1)
             else:
@@ -262,3 +253,29 @@ class Miner:
 
         return price_table
 
+    def is_cached(self, uuid):
+        """ True if the current date been already downloaded? """
+        if isfile(self.filename(uuid)):
+            return True
+        else:
+            return False
+
+    def load_job(self, uuid):
+        """ Load a cached file. """
+        with open(self.filename(uuid), 'w+') as f:
+            pretty_html = f.read()
+            f.close()
+        return BeautifulSoup(pretty_html)
+
+    def _save_job(self, job: BeautifulSoup, uuid):
+        """ Prettify the html for that date and save it to file.
+        :param job: the html soup for a given date
+        """
+
+        pretty_html = job.prettify()
+
+        with open(self.filename(uuid), 'w+') as f:
+            f.write(pretty_html)
+            f.close()
+
+        notify('File {} saved.', self.filename)

@@ -19,6 +19,11 @@ class Client(Base):
     client_id = Column(Integer, primary_key=True, autoincrement=False)
     name = Column(String)
 
+    @synonym_for('client_id')
+    @property
+    def id(self):
+        return self.client_id
+
 
 class Order(Base):
     __tablename__ = 'order'
@@ -31,6 +36,15 @@ class Order(Base):
     distance = Column(Float)
 
     client = relationship('Client', backref=backref('order'))
+
+    @synonym_for('client_id')
+    @property
+    def id(self):
+        return self.order_id
+
+    def __repr__(self):
+        return u'<Order(id: {0:s}, type: {1:s}, payed_cash: {2:s}, distance: {3:s})>'.format(
+            str(self.id), self.type, str(self.payed_cash), str(self.distance))
 
 
 class Checkin(Base):
@@ -45,12 +59,22 @@ class Checkin(Base):
     order = relationship('Order', backref=backref('checkin'))
     checkpoint = relationship('Checkpoint', backref=backref('checkin'))
 
+    @synonym_for('checkin_id')
+    @property
+    def id(self):
+        return self.checkin_id
+
 
 class Checkpoint(Base):
     __tablename__ = 'checkpoint'
 
     checkpoint_id = Column(String, primary_key=True, autoincrement=False)
     company = Column(String)
+
+    @synonym_for('checkpoint_id')
+    @property
+    def id(self):
+        return self.checkpoint_id
 
 
 if __name__ == '__main__':
