@@ -1,4 +1,5 @@
 """ Miner classes and related stuff. """
+from time import strptime
 from os.path import isfile
 
 import re
@@ -8,7 +9,8 @@ from requests import Session
 from bs4 import BeautifulSoup
 from pprint import PrettyPrinter
 
-from m5.utilities import notify, log_me, time_me
+from m5.utilities import geocode, notify, log_me, time_me
+from m5.model import Checkin, Checkpoint, Client, Order
 
 
 class Miner:
@@ -27,9 +29,9 @@ class Miner:
                  address={'name': 'div', 'attrs': {'data-collapsed': 'true'}})
 
     # Each field has a regex instructions.
-    _BLUEPRINTS = {'itinerary': dict(km={'line_nb': 0, 'pattern': r'(\d{1,2},\d{3})\skm', 'optional': True}),
-                   'header': dict(job_id={'line_nb': 0, 'pattern': r'.*(\d{10})', 'optional': True},
-                                  cash_payment={'line_nb': 0, 'pattern': r'(BAR)', 'optional': True}),
+    _BLUEPRINTS = {'itinerary': dict(distance={'line_nb': 0, 'pattern': r'(\d{1,2},\d{3})\sdistance', 'optional': True}),
+                   'header': dict(order_id={'line_nb': 0, 'pattern': r'.*(\d{10})', 'optional': True},
+                                  is_payed_cash={'line_nb': 0, 'pattern': r'(BAR)', 'optional': True}),
                    'client': dict(client_id={'line_nb': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
                                   client_name={'line_nb': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False}),
                    'adddress': dict(company={'line_nb': 1, 'pattern': r'(.*)', 'optional': False},
@@ -63,8 +65,8 @@ class Miner:
     @time_me
     @log_me
     def mine(self) -> list:
-        """ Mine a set of dates from the server.
-        :return: a list of (jobs, addresses) tuples
+        """ Mine a given date from the server.
+        :return: a list of (job_details, addresses) tuples
         """
 
         jobs = list()
@@ -72,7 +74,7 @@ class Miner:
 
         # Go browse the summary page for that day
         # and scrape off uuid parameters.
-        uuids = self.scrape_uuids(date)
+        uuids = self.scrape_uuids(self.date)
 
         # Was it a working day?
         if uuids:
@@ -83,16 +85,71 @@ class Miner:
                 else:
                     soup = self._get_job(uuid)
 
-                job = self._scrape(soup)
+                job_details, addresses = self._scrape(soup)
 
                 if self._DEBUG:
-                    pp.pprint(job)
+                    pp.pprint(job_details)
 
-                jobs.append(jobs)
+                jobs.append((job_details, addresses))
 
                 notify('Mined {} OK.', self.date.strftime('%d-%m-%Y'))
 
         return jobs
+
+    def process(self, raw_data: list):
+        """ Process the raw data and return declarative objects.
+
+        :param raw_data: a list of tuples (job_details, addresses)
+        :return: instances of Client, Order, Checkin and Checkpoint classes
+        """
+
+        orders = list()
+        clients = list()
+        checkpoints = list()
+        checkins = list()
+
+        for raw_datum in raw_data:
+            job_details = raw_datum[0]
+            addresses = raw_datum[1]
+
+            client = Client(**{'client_id': int(job_details['client_id']),
+                               'order_id': int(job_details['order_id']),
+                               'client_name': int(job_details['client_name'])})
+
+            order = Order(**{'order_id': int(job_details['order_id']),
+                             'date': self.date,
+                             'distance': int(job_details['distance']),
+                             'is_payed_cash': (bool(job_details['is_payed_cash'])),
+                             'city_tour': float(job_details['city_tour']),
+                             'extra_stops': float(job_details['extra_stops']),
+                             'overnight': float(job_details['overnight']),
+                             'fax_confirm': float(job_details['fax_confirm']),
+                             'waiting_time': float(job_details['waiting_time'])})
+
+            clients.append(client)
+            orders.append(order)
+
+            for address in addresses:
+                geocoded = geocode(address)
+
+                checkpoint = Checkpoint(**{'checkpoint_id': geocoded['serial'],
+                                           'street_name': geocoded['street_name'],
+                                           'street_nb': geocoded['street_nb'],
+                                           'city': geocoded['city'],
+                                           'postal_code': int(geocoded['postal_code']),
+                                           'company': address['company']})
+
+                checkin = Checkin(**{'checkin_id': strptime(address['until'], '%H:%M'),
+                                     'order_id': int(job_details['order_id']),
+                                     'checkpoint_id': geocoded['serial'],
+                                     'purpose': 'pickup' if address['purpose'] else 'dropoff',
+                                     'after': strptime(address['after'], '%H:%M'),
+                                     'until': strptime(address['until'], '%H:%M')})
+
+                checkpoints.append(checkpoint)
+                checkins.append(checkin)
+
+        return clients, orders, checkpoints, checkins
 
     def scrape_uuids(self, date: datetime) -> set:
         """
@@ -215,8 +272,7 @@ class Miner:
 
             addresses.append(address)
 
-        job = job_details, addresses
-        return job
+        return job_details, addresses
 
     @staticmethod
     def _scrape_prices(soup_fragment: BeautifulSoup) -> dict:
@@ -254,7 +310,8 @@ class Miner:
         return price_table
 
     def is_cached(self, uuid):
-        """ True if the current date been already downloaded? """
+        """ True if the current date been already downloaded. """
+
         if isfile(self.filename(uuid)):
             return True
         else:
@@ -262,13 +319,16 @@ class Miner:
 
     def load_job(self, uuid):
         """ Load a cached file. """
+
         with open(self.filename(uuid), 'w+') as f:
             pretty_html = f.read()
             f.close()
         return BeautifulSoup(pretty_html)
 
     def _save_job(self, job: BeautifulSoup, uuid):
-        """ Prettify the html for that date and save it to file.
+        """
+        Prettify the html for that date and save it to file.
+
         :param job: the html soup for a given date
         """
 

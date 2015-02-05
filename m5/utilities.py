@@ -27,6 +27,25 @@ def notify(message, *args):
     print('%s | %s' % timestamp, message)
 
 
+@log_me
+def geocode(self, address: dict) -> dict:
+    """
+    Geocode an address with Nominatim (http://nominatim.openstreetmap.org).
+
+    :return position: longitude, latitude
+    """
+
+    geolocator = Nominatim()
+    address = self.pretty_address(address)
+    location = geolocator.geocode(address)
+
+    position = (location.address,
+                (location.latitude, location.longitude),
+                location.raw)
+
+    return None
+
+
 def area():
     """ Postal code polygon area
     :return:
