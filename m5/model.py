@@ -40,13 +40,13 @@ class Order(Base):
     order_id = Column(Integer, primary_key=True, autoincrement=False)
     client_id = Column(Integer, ForeignKey('client.client_id'), nullable=False)
     type = Column(Enum('city_tour', 'overnight', 'help'))
-    cash = Column(Boolean)
-    city_tour = Column(Float)
-    overnight = Column(Float)
-    waiting_time = Column(Float)
-    extra_stops = Column(Float)
-    fax_confirm = Column(Float)
+    city_tour = Column(Float, default=0)
+    overnight = Column(Float, default=0)
+    waiting_time = Column(Float, default=0)
+    extra_stops = Column(Float, default=0)
+    fax_confirm = Column(Float, default=0)
     distance = Column(Float, default=0)
+    cash = Column(Boolean)
 
     client = relationship('Client', backref=backref('order'))
 
@@ -62,10 +62,10 @@ class Checkin(Base):
     checkin_id = Column(Integer, primary_key=True, autoincrement=False)
     checkpoint_id = Column(Integer, ForeignKey('checkpoint.checkpoint_id'), nullable=False)
     order_id = Column(Integer, ForeignKey('order.order_id'), nullable=False)
+    timestamp = Column(DateTime, nullable=False)
     purpose = Column(Enum('pickup', 'dropoff'))
     after = Column(DateTime)
     until = Column(DateTime)
-    timestamp = Column(DateTime, nullable=False)
 
     checkpoint = relationship('Checkpoint', backref=backref('checkin'))
     order = relationship('Order', backref=backref('checkin'))
@@ -80,13 +80,13 @@ class Checkpoint(Base):
     __tablename__ = 'checkpoint'
 
     checkpoint_id = Column(String, primary_key=True, autoincrement=False)
-    company = Column(String)
-    display_name = Column(String, nullable=False)
-    street = Column(String)
     lat = Column(Float, nullable=False)
     lon = Column(Float, nullable=False)
-    city = Column(String)
+    city = Column(String, default='Berlin')
+    display_name = Column(String)
     postal_code = Column(Integer)
+    street = Column(String)
+    company = Column(String)
 
     @synonym_for('checkpoint_id')
     @property

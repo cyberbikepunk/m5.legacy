@@ -22,7 +22,7 @@ class User:
     _DEBUG = True
 
     def __init__(self, username: str, password: str):
-        """  Authenticate the user and instantiate a database. """
+        """  Authenticate the user on the remote server and initialise the local database. """
 
         self.username = username
         self._password = password

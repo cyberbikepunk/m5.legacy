@@ -16,16 +16,15 @@ u = User('m-134', 'PASSWORD')
 
 # calendar = Calendar()
 # dates = calendar.itermonthdates(2014, 12)
+dates = [datetime(2014, 12, 19)]
 
-for date in [datetime(2014, 12, 19)]:
-    m = Miner(u.username, date, u.remote_server, u.remote_session)
-    raw_data = m.mine()
+m = Miner(u.username, u.remote_server, u.remote_session)
+p = Processor()
 
-    p = Processor(date, raw_data)
-    p.process()
+for date in dates:
+    raw_data = m.mine(date)
+    tables = p.process(raw_data)
 
     # Order matters
-    u.db.commit(p.clients)
-    u.db.commit(p.orders)
-    u.db.commit(p.checkpoints)
-    u.db.commit(p.checkins)
+    for table in tables:
+        u.db.commit_all(table)

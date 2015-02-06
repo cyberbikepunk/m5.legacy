@@ -22,31 +22,30 @@ from m5.model import Checkin, Checkpoint, Client, Order
 
 
 class Processor():
-    """ The'process' method packages the raw data into tables digestable by the database. """
+    """ The 'process' method packages scraped data into table rows digestable by the database. """
 
-    def __init__(self, raw_data: tuple, date: datetime):
+    def __init__(self):
+        pass
 
-        self.clients = list()
-        self.orders = list()
-        self.checkpoints = list()
-        self.checkins = list()
+    def process(self, raw_data: tuple):
+        """ Process scraped data and produce ORM compatible table row objects. """
 
-        self.raw_data = raw_data
-        self.date = date
+        clients = list()
+        orders = list()
+        checkpoints = list()
+        checkins = list()
 
-    def process(self):
-        """ Process the raw data and produce ORM compatible table row objects. """
-
-        for raw_datum in self.raw_data:
-            job_details = raw_datum[0]
-            addresses = raw_datum[1]
+        for raw_datum in raw_data:
+            date = raw_data[0]
+            job_details = raw_datum[1]
+            addresses = raw_datum[2]
 
             client = Client(**{'client_id': self.unserialise(int, job_details['client_id']),
                                'name': self.unserialise(str, job_details['client_name'])})
 
             order = Order(**{'order_id': self.unserialise(int, job_details['order_id']),
                              'client_id': self.unserialise(int, job_details['client_id']),
-                             'date': self.date,
+                             'date': date,
                              'distance': self.unserialise(float, job_details['km']),
                              'cash': self.unserialise(bool, job_details['cash']),
                              'city_tour': self.unserialise(float, job_details['city_tour']),
@@ -56,8 +55,8 @@ class Processor():
                              'waiting_time': self.unserialise(float, job_details['waiting_time']),
                              'type': self.unserialise_type(job_details['type'])})
 
-            self.clients.append(client)
-            self.orders.append(order)
+            clients.append(client)
+            orders.append(order)
 
             for address in addresses:
                 geocoded = self.geocode(address)
@@ -71,16 +70,20 @@ class Processor():
                                            'postal_code': self.unserialise(int, job_details['postal_code']),
                                            'company': self.unserialise(str, address['company'])})
 
-                checkin = Checkin(**{'checkin_id': self.hash_timestamp(self.date, address['timestamp']),
+                checkin = Checkin(**{'checkin_id': self.hash_timestamp(date, address['timestamp']),
                                      'checkpoint_id': geocoded['osm_id'],
                                      'order_id': self.unserialise(int, job_details['order_id']),
-                                     'timestamp': self.unserialise_timestamp(self.date, address['timestamp']),
+                                     'timestamp': self.unserialise_timestamp(date, address['timestamp']),
                                      'purpose': self.unserialise_purpose(address['purpose']),
-                                     'after': self.unserialise_timestamp(self.date, address['after']),
-                                     'until': self.unserialise_timestamp(self.date, address['until'])})
+                                     'after': self.unserialise_timestamp(date, address['after']),
+                                     'until': self.unserialise_timestamp(date, address['until'])})
 
-                self.checkpoints.append(checkpoint)
-                self.checkins.append(checkin)
+                checkpoints.append(checkpoint)
+                checkins.append(checkin)
+
+        # Order matters for the database commit.
+        tables = clients, orders, checkpoints, checkins
+        return tables
 
     @staticmethod
     def geocode(raw_address: dict) -> dict:
@@ -107,10 +110,10 @@ class Processor():
     @staticmethod
     def unserialise(type_cast: type, raw_value: str):
         """
-        Dynamically cast-type raw strings returned by the scraper, with a twist:
+        Dynamically type-cast raw strings returned by the scraper, with a twist:
         empty strings return None. The point is that the database will refuse to
-        add a record if a non-nullable column gets the value None. That keeps the
-        database nice and clean.
+        add a row if a non-nullable column gets the value None. That keeps the
+        database nice and clean. The other variants of this function do the same.
         """
     
         if raw_value is '':
@@ -202,19 +205,20 @@ class Miner:
         # TODO Write this function to dry the code
         pass
 
-    def __init__(self, username: str, date: datetime, server: str, session: Session):
+    def __init__(self, username: str, server: str, session: Session):
         """ Instantiate a Miner object for a given user and date.
 
         :param username: the current user
-        :param date: a datetime object
         :param server: the url of the server
         :param session: the current
         """
 
-        self.date = date
         self.server = server
         self.session = session
         self.username = username
+
+        # Status flag
+        self.date = None
 
     def filename(self, uuid):
         """ Construct a database filepath from a job uuid """
@@ -224,17 +228,18 @@ class Miner:
 
     @time_me
     @log_me
-    def mine(self) -> list:
+    def mine(self, date: datetime) -> list:
         """
         Mine a given date from the server and return a list of
         tuples holding two dictionaries (job_details & addresses).
         """
 
         raw_data = list()
+        self.date = date
 
         # Go browse the summary page for that day
         # and scrape off uuid parameters.
-        uuids = self.scrape_uuids(self.date)
+        uuids = self.scrape_uuids(date)
 
         # Was it a working day?
         if uuids:
@@ -244,13 +249,13 @@ class Miner:
                 else:
                     soup = self._get_job(uuid)
 
-                raw_datum = self._scrape(soup, uuid)
-                raw_data.append(raw_datum)
+                job_details, addresses = self._scrape(soup, uuid)
+                raw_data.append((date, job_details, addresses))
 
-                notify('Mined {} OK.', self.date.strftime('%d-%m-%Y'))
+                notify('Mined {} OK.', date.strftime('%d-%m-%Y'))
                 if self._DEBUG:
                     pp = PrettyPrinter()
-                    pp.pprint(raw_datum)
+                    pp.pprint(raw_data)
 
         return raw_data
 
@@ -374,8 +379,7 @@ class Miner:
 
             addresses.append(address)
 
-        raw_datum = (job_details, addresses)
-        return raw_datum
+        return job_details, addresses
 
     @staticmethod
     def _scrape_prices(soup_fragment: BeautifulSoup) -> dict:
