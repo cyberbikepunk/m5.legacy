@@ -1,8 +1,11 @@
 """ Miner classes and related stuff. """
+
+import inspect
 from time import strptime
 from os.path import isfile
 
 import re
+import sys
 
 from datetime import datetime
 from requests import Session
@@ -11,6 +14,10 @@ from pprint import PrettyPrinter
 
 from m5.utilities import geocode, notify, log_me, time_me
 from m5.model import Checkin, Checkpoint, Client, Order
+import m5.model
+
+def null_or(int, param):
+    pass
 
 
 class Miner:
@@ -43,6 +50,14 @@ class Miner:
                                     timestamp={'line_nb': -2, 'pattern': r'ST:\s(\d{2}:\d{2})', 'optional': False},
                                     until={'line_nb': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'optional': True})}
 
+    @staticmethod
+    def build_blueprints():
+        classes = sys.modules[model]
+
+        for name, obj in inspect.getmembers(sys.modules[__name__]):
+            if inspect.isclass(obj):
+                print obj
+
     def __init__(self, user: str, date: datetime, server: str, session: Session):
         """
         Instantiate a Miner object for a given user and date.
@@ -54,12 +69,12 @@ class Miner:
         """
 
         self.date = date
-        self._server = server
-        self._session = session
+        self.server = server
+        self.session = session
         self.user = user
 
     def filename(self, uuid):
-        """ Return the filename for that job """
+        """ Construct a filename from a job uuid """
         return '%s_%s.html' % (self.date.strftime('%Y-%m-%d'), uuid)
 
     @time_me
@@ -79,7 +94,6 @@ class Miner:
         # Was it a working day?
         if uuids:
             for uuid in uuids:
-
                 if self.is_cached(uuid):
                     soup = self.load_job(uuid)
                 else:
@@ -91,7 +105,6 @@ class Miner:
                     pp.pprint(job_details)
 
                 jobs.append((job_details, addresses))
-
                 notify('Mined {} OK.', self.date.strftime('%d-%m-%Y'))
 
         return jobs
@@ -112,8 +125,8 @@ class Miner:
             job_details = raw_datum[0]
             addresses = raw_datum[1]
 
-            client = Client(**{'client_id': int(job_details['client_id']),
-                               'order_id': int(job_details['order_id']),
+            client = Client(**{'client_id': null_or(int, (job_details['client_id'])),
+                               'order_id': null_or(int, (job_details['order_id'])),
                                'client_name': int(job_details['client_name'])})
 
             order = Order(**{'order_id': int(job_details['order_id']),
@@ -143,7 +156,7 @@ class Miner:
                                      'order_id': int(job_details['order_id']),
                                      'checkpoint_id': geocoded['serial'],
                                      'purpose': 'pickup' if address['purpose'] else 'dropoff',
-                                     'after': strptime(address['after'], '%H:%M'),
+                                     'after': strptime(address['after'], '%H:%M') if address['after'] else ,
                                      'until': strptime(address['until'], '%H:%M')})
 
                 checkpoints.append(checkpoint)
@@ -160,11 +173,11 @@ class Miner:
         :return: A set of uuid strings
         """
 
-        url = self._server + 'll.php5'
+        url = self.server + 'll.php5'
         payload = {'status': 'delivered',
                    'datum': date.strftime('%d.%m.%Y')}
 
-        response = self._session.get(url, params=payload)
+        response = self.session.get(url, params=payload)
 
         pattern = 'uuid=(\d{7})'
         jobs = re.findall(pattern, response.text)
@@ -179,10 +192,10 @@ class Miner:
         :return: parsed html soup
         """
 
-        url = self._server + 'll_detail.php5'
+        url = self.server + 'll_detail.php5'
         payload = {'status': 'delivered', 'uuid': uuid}
 
-        response = self._session.get(url, params=payload)
+        response = self.session.get(url, params=payload)
 
         # Parse the raw html text...
         soup = BeautifulSoup(response.text)
@@ -193,7 +206,7 @@ class Miner:
 
         return job
 
-    def _scrape_fragment(self, blueprint: dict, soup_fragment: BeautifulSoup) -> dict:
+    def _scrape_fragment(self, blueprint: dict, soup_fragment: BeautifulSoup, uuid) -> dict:
         """ Scrape a fragment of the page. In goes the blueprint, out comes a dictionnary.
 
         :param blueprint: the instructions
@@ -222,16 +235,16 @@ class Miner:
             else:
                 if field['optional']:
                     # If we fail to scrape the field but the field is optional:
-                    # assign the dictionary key anyways:
-                    collected[field_name] = None
+                    # assign an empty string:
+                    collected[field_name] = str()
                 else:
-                    # If we fail to scrape a field that we actually need: ouch!
-                    # Don't assign any key and make sure we give some feedback.
+                    # If we fail to scrape a field that we actually need, assign None.
+                    # The database won't accept it because the fields is not nullable.
                     message = 'Failed to scrape {}: {}ll_detail.php5?status=delivered&uuid={}'
                     notify(message,
                            field_name,
-                           self._server,
-                           self._uuid)
+                           self.server,
+                           self.uuid)
 
         return collected
 

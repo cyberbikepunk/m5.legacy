@@ -1,6 +1,7 @@
 """ Miscellaneous utility classes and fs """
 
 from datetime import datetime
+from geopy import Nominatim
 
 
 def log_me(f):

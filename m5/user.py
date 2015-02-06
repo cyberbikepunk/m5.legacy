@@ -23,8 +23,8 @@ class User:
         self._password = password
 
         # The company server
-        self._server = 'http://bamboo-mec.de/'
-        self._session = Session()
+        self.server = 'http://bamboo-mec.de/'
+        self.session = Session()
 
         self._authenticate(self.username, self._password)
         self.db = Database(username)
@@ -39,15 +39,15 @@ class User:
         if not password:
             self._password = getpass('Enter password: ')
 
-        login_url = self._server + 'll.php5'
+        login_url = self.server + 'll.php5'
         credentials = {'username': self.username,
                        'password': self._password}
 
         # Pretend
         headers = {'user-agent': 'Mozilla/5.0'}
-        self._session.headers.update(headers)
+        self.session.headers.update(headers)
 
-        response = self._session.post(login_url, credentials)
+        response = self.session.post(login_url, credentials)
 
         if not response.ok:
             self._authenticate()
@@ -64,13 +64,13 @@ class User:
     def _logout(self):
         """ Logout from the server and close the session. """
 
-        url = self._server + 'index.php5'
+        url = self.server + 'index.php5'
         payload = {'logout': '1'}
 
-        response = self._session.get(url, params=payload)
+        response = self.session.get(url, params=payload)
 
         if response.history[0].status_code == 302:
             # We have been redirected to the home page
             notify('Logged out successfully. Goodbye!')
 
-        self._session.close()
+        self.session.close()
