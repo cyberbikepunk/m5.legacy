@@ -24,5 +24,5 @@ def notify(message, *args):
 
     message = message.format(*args)
     timestamp = '{:%Y-%m-%d %H:%M:%S %fms}'.format(datetime.now())
-    print('%s | %s' % timestamp, message)
+    print('%s | %s' % (timestamp, message))
 

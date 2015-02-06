@@ -7,15 +7,19 @@ from sqlalchemy.ext.declarative import declarative_base, synonym_for
 
 Base = declarative_base()
 
-"""
-        Clients
-            ^
-            |
-        Orders   Checkpoints
-            ^      ^
-            |      |
-            Checkins
-"""
+#       Clients
+#           ^
+#           |
+#       Orders   Checkpoints
+#           ^      ^
+#           |      |
+#           Check-ins
+#
+#              One
+#               ^
+#               |
+#            Many to
+#    (foreign key + back-ref)
 
 
 class Client(Base):
@@ -34,10 +38,7 @@ class Order(Base):
     __tablename__ = 'order'
 
     order_id = Column(Integer, primary_key=True, autoincrement=False)
-
     client_id = Column(Integer, ForeignKey('client.client_id'), nullable=False)
-    client = relationship('Client', backref=backref('order'))
-
     type = Column(Enum('city_tour', 'overnight', 'help'))
     cash = Column(Boolean)
     city_tour = Column(Float)
@@ -46,6 +47,8 @@ class Order(Base):
     extra_stops = Column(Float)
     fax_confirm = Column(Float)
     distance = Column(Float, default=0)
+
+    client = relationship('Client', backref=backref('order'))
 
     @synonym_for('client_id')
     @property
@@ -57,17 +60,15 @@ class Checkin(Base):
     __tablename__ = 'checkin'
 
     checkin_id = Column(Integer, primary_key=True, autoincrement=False)
-
     checkpoint_id = Column(Integer, ForeignKey('checkpoint.checkpoint_id'), nullable=False)
-    checkpoint = relationship('Checkpoint', backref=backref('checkin'))
-
     order_id = Column(Integer, ForeignKey('order.order_id'), nullable=False)
-    order = relationship('Order', backref=backref('checkin'))
-
     purpose = Column(Enum('pickup', 'dropoff'))
     after = Column(DateTime)
     until = Column(DateTime)
     timestamp = Column(DateTime, nullable=False)
+
+    checkpoint = relationship('Checkpoint', backref=backref('checkin'))
+    order = relationship('Order', backref=backref('checkin'))
 
     @synonym_for('checkin_id')
     @property
@@ -79,7 +80,6 @@ class Checkpoint(Base):
     __tablename__ = 'checkpoint'
 
     checkpoint_id = Column(String, primary_key=True, autoincrement=False)
-
     company = Column(String)
     display_name = Column(String, nullable=False)
     street = Column(String)

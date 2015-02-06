@@ -5,23 +5,27 @@ The idea is to log myself onto the company server and let me play
 with the module API. Once I'm happy, I'll write a web interface.
 """
 
-from calendar import Calendar
+# from calendar import Calendar
 # from pprint import PrettyPrinter
+from datetime import datetime
 
 from m5.user import User
-from m5.miner import Miner
-
-calendar = Calendar()
-dates = calendar.itermonthdates(2014, 12)
+from m5.factory import Miner, Processor
 
 u = User('m-134', 'PASSWORD')
 
-for date in dates:
-    m = Miner(date, u.remote_server, u.remote_session)
-    m.mine()
-    m.process()
+# calendar = Calendar()
+# dates = calendar.itermonthdates(2014, 12)
 
-    u.db.commit(m.clients)
-    u.db.commit(m.orders)
-    u.db.commit(m.checkins)
-    u.db.commit(m.checkpoints)
+for date in [datetime(2014, 12, 19)]:
+    m = Miner(u.username, date, u.remote_server, u.remote_session)
+    raw_data = m.mine()
+
+    p = Processor(date, raw_data)
+    p.process()
+
+    # Order matters
+    u.db.commit(p.clients)
+    u.db.commit(p.orders)
+    u.db.commit(p.checkpoints)
+    u.db.commit(p.checkins)

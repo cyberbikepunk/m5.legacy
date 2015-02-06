@@ -9,7 +9,7 @@ from calendar import Calendar
 # from pprint import PrettyPrinter
 
 from m5.user import User
-from m5.miner import Miner
+from m5.factory import Miner
 
 calendar = Calendar()
 dates = calendar.itermonthdates(2014, 12)

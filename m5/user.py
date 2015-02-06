@@ -7,7 +7,6 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from m5.utilities import notify, log_me, safe_request
-from m5.Model import Base
 
 
 class User:
@@ -34,12 +33,12 @@ class User:
         self._authenticate(self.username, self._password)
 
         # One database per user
-        self.db_path = '../users/%db_s.sqlite' % self.username
+        self.db_path = '../users/db_%s.sqlite' % self.username
         self.db_engine = create_engine('sqlite:///%s' % self.db_path, echo=self._DEBUG)
         self.Base.metadata.create_all(self.db_engine)
         self.Session.configure(bind=self.db_engine)
 
-        # Queries on this object:
+        # We query on this:
         self.db = self.Session()
 
     @log_me

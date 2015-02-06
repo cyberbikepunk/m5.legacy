@@ -9,7 +9,7 @@ from requests import Request, Session
 from getpass import getpass
 
 
-from m5.miner import Miner
+from m5.factory import Miner
 
 
 def _safe_request(session, request):
