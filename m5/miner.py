@@ -1,29 +1,115 @@
 """ Miner classes and related stuff. """
 
-import inspect
-from time import strptime
 from os.path import isfile
-
-import re
-import sys
-
+from geopy import Nominatim
 from datetime import datetime
+from time import strptime
 from requests import Session
 from bs4 import BeautifulSoup
 from pprint import PrettyPrinter
+from re import findall, match
 
-from m5.utilities import geocode, notify, log_me, time_me
+from m5.utilities import notify, log_me, time_me
 from m5.model import Checkin, Checkpoint, Client, Order
-import m5.model
 
-def null_or(int, param):
-    pass
+# TODO Refactor the miner module code DRY.
+#   - blueprints (scraping specifications) should be defined
+#     within the declarative model and unwrapped on the fly.
+#   - the geo-coding and unserialisation procedures should
+#     also be defined in the model and streamlined.
+#   - we should get rid of corner cases: the price scraper
+#     and all special un-serialisation methods
+
+
+def geocode(raw_address: dict) -> dict:
+    """
+    Geocode an address with Nominatim (http://nominatim.openstreetmap.org).
+    The osm_id field is used as the primary key in the checkpoint table.
+    """
+
+    address = {'postalcode': raw_address['postal_code'],
+               'street': raw_address['address'],
+               'city': raw_address['city'],
+               'country': 'Germany'}
+
+    geo = Nominatim()
+    response = geo.geocode(address)
+
+    geocoded = {'lat': response.raw['lat'],
+                'lon': response.raw['lon'],
+                'osm_id': response.raw['osm_id'],
+                'display_name': response.raw['display_name']}
+
+    return geocoded
+
+
+def unserialise(type_cast: type, raw_value: str):
+    """
+    Dynamically cast-type raw strings returned by the scraper, with a twist:
+    empty strings return None. The point is that the database will refuse to
+    add a record if a non-nullable column gets the value None. That keeps the
+    database nice and clean.
+    """
+
+    if raw_value is '':
+        return None
+    else:
+        return type_cast(raw_value)
+
+
+def unserialise_purpose(raw_value):
+    """ This is a dirty fix """
+    if raw_value is 'Abholung':
+        return 'pickup'
+    elif raw_value is 'Zustellung':
+        return 'dropoff'
+    else:
+        return None
+
+
+def unserialise_timestamp(date, raw_time):
+    """ This is a dirty fix """
+    if raw_time is '':
+        return None
+    else:
+        t = strptime(raw_time, '%H:%M')
+        return datetime(date.year,
+                        date.month,
+                        date.day,
+                        hour=t.tm_hour,
+                        minute=t.tm_min)
+
+
+def unserialise_type(raw_value):
+    """ This is a dirty fix """
+    if raw_value is 'OV':
+        return 'overnight'
+    elif raw_value is 'Ladehilfe':
+        return 'help'
+    elif raw_value is 'Stadtkurier':
+        return 'city_tour'
+    else:
+        return None
+
+
+def hash_timestamp(date, raw_time):
+    """ This is a dirty fix """
+    if raw_time is '':
+        return None
+    else:
+        t = strptime(raw_time, '%H:%M')
+        d = datetime(date.year,
+                     date.month,
+                     date.day,
+                     hour=t.tm_hour,
+                     minute=t.tm_min)
+        return d.__hash__()
 
 
 class Miner:
     """
-    The 'mine' method scrapes off data from the company server. It's the
-    only public method in the class. Everything else is low-level internals.
+    Basically, the 'mine' method scrapes off data from the company server and the
+    'process' method packages the raw data into tables digestable by the database.
     """
 
     _DEBUG = True
@@ -36,9 +122,10 @@ class Miner:
                  address={'name': 'div', 'attrs': {'data-collapsed': 'true'}})
 
     # Each field has a regex instructions.
-    _BLUEPRINTS = {'itinerary': dict(distance={'line_nb': 0, 'pattern': r'(\d{1,2},\d{3})\sdistance', 'optional': True}),
+    _BLUEPRINTS = {'itinerary': dict(km={'line_nb': 0, 'pattern': r'(\d{1,2},\d{3})\sdistance', 'optional': True}),
                    'header': dict(order_id={'line_nb': 0, 'pattern': r'.*(\d{10})', 'optional': True},
-                                  is_payed_cash={'line_nb': 0, 'pattern': r'(BAR)', 'optional': True}),
+                                  type={'line_nb': 0, 'pattern': r'.*(OV|Ladehilfe|Stadtkurier)', 'optional': False},
+                                  cash={'line_nb': 0, 'pattern': r'(BAR)', 'optional': True}),
                    'client': dict(client_id={'line_nb': 0, 'pattern': r'.*(\d{5})$', 'optional': False},
                                   client_name={'line_nb': 0, 'pattern': r'Kunde:\s(.*)\s\|', 'optional': False}),
                    'adddress': dict(company={'line_nb': 1, 'pattern': r'(.*)', 'optional': False},
@@ -52,15 +139,12 @@ class Miner:
 
     @staticmethod
     def build_blueprints():
-        classes = sys.modules[model]
-
-        for name, obj in inspect.getmembers(sys.modules[__name__]):
-            if inspect.isclass(obj):
-                print obj
+        """ Construct regex blueprints from ORM field information """
+        # TODO Write this function to dry the code
+        pass
 
     def __init__(self, user: str, date: datetime, server: str, session: Session):
-        """
-        Instantiate a Miner object for a given user and date.
+        """ Instantiate a Miner object for a given user and date.
 
         :param user: the current user
         :param date: a datetime object
@@ -73,6 +157,11 @@ class Miner:
         self.session = session
         self.user = user
 
+        self.clients = list()
+        self.orders = list()
+        self.checkins = list()
+        self.checkpoints = list()
+
     def filename(self, uuid):
         """ Construct a filename from a job uuid """
         return '%s_%s.html' % (self.date.strftime('%Y-%m-%d'), uuid)
@@ -80,8 +169,9 @@ class Miner:
     @time_me
     @log_me
     def mine(self) -> list:
-        """ Mine a given date from the server.
-        :return: a list of (job_details, addresses) tuples
+        """
+        Mine a given date from the server and return a list of
+        tuples holding two dictionaries (job_details & addresses).
         """
 
         jobs = list()
@@ -116,58 +206,57 @@ class Miner:
         :return: instances of Client, Order, Checkin and Checkpoint classes
         """
 
-        orders = list()
-        clients = list()
-        checkpoints = list()
-        checkins = list()
-
         for raw_datum in raw_data:
             job_details = raw_datum[0]
             addresses = raw_datum[1]
 
-            client = Client(**{'client_id': null_or(int, (job_details['client_id'])),
-                               'order_id': null_or(int, (job_details['order_id'])),
-                               'client_name': int(job_details['client_name'])})
+            client = Client(**{'client_id': unserialise(int, job_details['client_id']),
+                               'name': unserialise(str, job_details['client_name'])})
 
-            order = Order(**{'order_id': int(job_details['order_id']),
+            order = Order(**{'order_id': unserialise(int, job_details['order_id']),
+                             'client_id': unserialise(int, job_details['client_id']),
                              'date': self.date,
-                             'distance': int(job_details['distance']),
-                             'is_payed_cash': (bool(job_details['is_payed_cash'])),
-                             'city_tour': float(job_details['city_tour']),
-                             'extra_stops': float(job_details['extra_stops']),
-                             'overnight': float(job_details['overnight']),
-                             'fax_confirm': float(job_details['fax_confirm']),
-                             'waiting_time': float(job_details['waiting_time'])})
+                             'distance': unserialise(float, job_details['km']),
+                             'cash': unserialise(bool, job_details['cash']),
+                             'city_tour': unserialise(float, job_details['city_tour']),
+                             'extra_stops': unserialise(float, job_details['extra_stops']),
+                             'overnight': unserialise(float, job_details['overnight']),
+                             'fax_confirm': unserialise(float, job_details['fax_confirm']),
+                             'waiting_time': unserialise(float, job_details['waiting_time']),
+                             'type': unserialise_type(job_details['type'])})
 
-            clients.append(client)
-            orders.append(order)
+            self.clients.append(client)
+            self.orders.append(order)
 
             for address in addresses:
                 geocoded = geocode(address)
 
-                checkpoint = Checkpoint(**{'checkpoint_id': geocoded['serial'],
-                                           'street_name': geocoded['street_name'],
-                                           'street_nb': geocoded['street_nb'],
-                                           'city': geocoded['city'],
-                                           'postal_code': int(geocoded['postal_code']),
-                                           'company': address['company']})
+                checkpoint = Checkpoint(**{'checkpoint_id': geocoded['osm_id'],
+                                           'display_name': geocoded['display_name'],
+                                           'lat': geocoded['lat'],
+                                           'lon': geocoded['lat'],
+                                           'street': unserialise(str, job_details['address']),
+                                           'city': unserialise(str, job_details['city']),
+                                           'postal_code': unserialise(int, job_details['postal_code']),
+                                           'company': unserialise(str, address['company'])})
 
-                checkin = Checkin(**{'checkin_id': strptime(address['until'], '%H:%M'),
-                                     'order_id': int(job_details['order_id']),
-                                     'checkpoint_id': geocoded['serial'],
-                                     'purpose': 'pickup' if address['purpose'] else 'dropoff',
-                                     'after': strptime(address['after'], '%H:%M') if address['after'] else ,
-                                     'until': strptime(address['until'], '%H:%M')})
+                checkin = Checkin(**{'checkin_id': hash_timestamp(self.date, address['timestamp']),
+                                     'checkpoint_id': geocoded['osm_id'],
+                                     'order_id': unserialise(int, job_details['order_id']),
+                                     'timestamp': unserialise_timestamp(self.date, address['timestamp']),
+                                     'purpose': unserialise_purpose(address['purpose']),
+                                     'after': unserialise_timestamp(self.date, address['after']),
+                                     'until': unserialise_timestamp(self.date, address['until'])})
 
-                checkpoints.append(checkpoint)
-                checkins.append(checkin)
-
-        return clients, orders, checkpoints, checkins
+                self.checkpoints.append(checkpoint)
+                self.checkins.append(checkin)
 
     def scrape_uuids(self, date: datetime) -> set:
         """
         Return unique uuid request parameters for each
         job by scraping the overview page for that date.
+        These uuids are not strict uuids and not so unique:
+        they are 7 digit numbers. But they're called uuids.
 
         :param date: a single day
         :return: A set of uuid strings
@@ -180,7 +269,7 @@ class Miner:
         response = self.session.get(url, params=payload)
 
         pattern = 'uuid=(\d{7})'
-        jobs = re.findall(pattern, response.text)
+        jobs = findall(pattern, response.text)
 
         # Each uuid string appears twice: dump the duplicates.
         return set(jobs)
@@ -206,8 +295,8 @@ class Miner:
 
         return job
 
-    def _scrape_fragment(self, blueprint: dict, soup_fragment: BeautifulSoup, uuid) -> dict:
-        """ Scrape a fragment of the page. In goes the blueprint, out comes a dictionnary.
+    def _scrape_fragment(self, blueprint: dict, soup_fragment: BeautifulSoup, uuid: str) -> dict:
+        """ Scrape a fragment of the page. In goes hmtl + blueprint, out comes a dictionnary.
 
         :param blueprint: the instructions
         :param soup_fragment: a parsed html fragment
@@ -229,29 +318,24 @@ class Miner:
         # Collect each field one by one, even if that
         # means returning to the same line several times.
         for field_name, field in blueprint.items():
-            match = re.match(field['pattern'], contents[field['line_nb']])
-            if match:
-                collected[field_name] = match.group(1)
+            # TODO Catch exceptions when line_nb doesn't exist
+            matched = match(field['pattern'], contents[field['line_nb']])
+            if matched:
+                collected[field_name] = matched.group(1)
             else:
-                if field['optional']:
-                    # If we fail to scrape the field but the field is optional:
-                    # assign an empty string:
-                    collected[field_name] = str()
-                else:
-                    # If we fail to scrape a field that we actually need, assign None.
-                    # The database won't accept it because the fields is not nullable.
+                collected[field_name] = ''
+                if not field['optional']:
+                    # We have a problem: make sure we log this so that we can fix it later
                     message = 'Failed to scrape {}: {}ll_detail.php5?status=delivered&uuid={}'
-                    notify(message,
-                           field_name,
-                           self.server,
-                           self.uuid)
+                    notify(message, field_name, self.server, uuid)
 
         return collected
 
     def _scrape(self, soup: BeautifulSoup) -> tuple:
         """
         Scrape out of a job's web page using bs4 and re modules.
-        In comes the soup, out go field name/value pairs as raw strings.
+        In comes the soup, out go field name/value pairs as raw
+        strings.
 
         :param soup: the job's web page
         :return: job_details and addresses as a tuple
@@ -262,7 +346,6 @@ class Miner:
 
         # Step 1.1: everything except prices
         fragments = ['header', 'client', 'itinerary']
-        # TODO Generate blueprints on the fly
 
         for fragment in fragments:
             soup_fragment = soup.find_next(name=self._TAGS[fragment]['name'])
