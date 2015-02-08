@@ -1,12 +1,15 @@
 """ User classes and related stuff. """
 
 from getpass import getpass
+from m5 import model
 from requests import Session as RemoteSession
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from runpy import run_module
 
 from m5.utilities import notify, log_me, safe_request
+from m5.model import Checkin, Client, Checkpoint, Order, Base
 
 
 class User:
@@ -16,12 +19,9 @@ class User:
     It can theoretically be overridden for other courier companies.
     """
 
-    Base = declarative_base()
-    Session = sessionmaker()
-
     _DEBUG = True
 
-    def __init__(self, username: str, password: str):
+    def __init__(self, username: str=None, password: str=None):
         """  Authenticate the user on the remote server and initialise the local database. """
 
         self.username = username
@@ -33,13 +33,13 @@ class User:
         self._authenticate(self.username, self._password)
 
         # One database per user
-        self.db_path = '../users/db_%s.sqlite' % self.username
-        self.db_engine = create_engine('sqlite:///%s' % self.db_path, echo=self._DEBUG)
-        self.Base.metadata.create_all(self.db_engine)
-        self.Session.configure(bind=self.db_engine)
+        self.path = '../users/%s/database.sqlite' % self.username
+        self.engine = create_engine('sqlite:///%s' % self.path, echo=self._DEBUG)
+        self.Base = Base.metadata.create_all(self.engine)
 
         # We query on this:
-        self.db = self.Session()
+        Session = sessionmaker(bind=self.engine)
+        self.session = Session()
 
     @log_me
     @safe_request
@@ -55,7 +55,7 @@ class User:
         credentials = {'username': self.username,
                        'password': self._password}
 
-        # Pretend
+        # The server doesn't seem to care but
         headers = {'user-agent': 'Mozilla/5.0'}
         self.remote_session.headers.update(headers)
 
@@ -64,12 +64,11 @@ class User:
         if not response.ok:
             self._authenticate()
         else:
-            notify('You are now logged in.')
+            notify('You are now logged in to {}.', self.remote_server)
 
     def quit(self):
         """ Make a clean exit from the program. """
 
-        self.db.save()
         self._logout()
         exit(0)
 

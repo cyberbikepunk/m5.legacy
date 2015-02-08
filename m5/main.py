@@ -21,7 +21,7 @@ for date in dates:
     m.mine()
     m.process()
 
-    u.db.commit(m.clients)
-    u.db.commit(m.orders)
-    u.db.commit(m.checkins)
-    u.db.commit(m.checkpoints)
+    u.session.commit(m.clients)
+    u.session.commit(m.orders)
+    u.session.commit(m.checkins)
+    u.session.commit(m.checkpoints)

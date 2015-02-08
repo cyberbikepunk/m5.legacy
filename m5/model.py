@@ -47,6 +47,8 @@ class Order(Base):
     fax_confirm = Column(Float, default=0)
     distance = Column(Float, default=0)
     cash = Column(Boolean)
+    date = Column(DateTime)
+    uuid = Column(Integer)
 
     client = relationship('Client', backref=backref('order'))
 
