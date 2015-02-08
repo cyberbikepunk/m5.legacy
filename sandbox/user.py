@@ -9,7 +9,7 @@ from requests import Request, Session
 from getpass import getpass
 
 
-from m5.miner import MessengerMiner
+from m5.factory import Miner
 
 
 def _safe_request(session, request):
@@ -26,8 +26,8 @@ def _safe_request(session, request):
 
 class Messenger:
     """
-    The Messenger class manages user activity for couriers freelancing
-    for Messenger (http://messenger.de). This is the default user class.
+    The User class manages user activity for couriers freelancing
+    for User (http://messenger.de). This is the default user class.
     It could be extended to other courier companies.
 
     Public methods (API):
@@ -116,7 +116,7 @@ class Messenger:
 
         with open(self._userlog, 'a') as f:
             f.write('\n'.join(self._log) + '\n\n')
-            self._rec('Messenger log saved to {}', self._userlog)
+            self._rec('User log saved to {}', self._userlog)
 
         # Now do the book-keeping
         self.mined.add(date)
@@ -197,7 +197,7 @@ class Messenger:
         """ If that date hasn't been scraped before, scrape it! """
         date_string = date.strftime('%d-%m-%Y')
         # Switch on the engine
-        m = MessengerMiner(date=date, session=self._session, server=self._server)
+        m = Miner(date=date, session=self._session, server=self._server)
 
         # Been there, done that
         if date in self._miners:
@@ -207,7 +207,7 @@ class Messenger:
         else:
             # Go browse the web summary page for that day
             # and scrape off the job uuid request parameters.
-            jobs = m.fetch_jobs()
+            jobs = m.scrape_uuids()
 
             # I don't work on weekends
             if not jobs:
@@ -219,9 +219,9 @@ class Messenger:
                     # the collected fields in a sensible manner.
                     # We don't pickle the data yet: instead, we
                     # pickle multiple days at once before exit.
-                    soup = m.get_job(j)
-                    raw_data = m.scrape_job(soup)
-                    m.package_job(raw_data)
+                    soup = m._get_job(j)
+                    raw_data = m._scrape(soup)
+                    m.process_job(raw_data)
 
                     # So wanna see results?
                     pp = PrettyPrinter()
@@ -235,5 +235,5 @@ class Messenger:
                 # rate, but let's do better next time!
                 # TODO Hopefully remove this debug message later
                 self._rec('Mined: {} successfully!', date_string)
-                for message in m.debug_messages:
+                for message in m._warnings:
                     self._rec(message)
