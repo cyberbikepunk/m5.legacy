@@ -1,15 +1,12 @@
 """ User classes and related stuff. """
 
 from getpass import getpass
-from m5 import model
 from requests import Session as RemoteSession
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from runpy import run_module
 
 from m5.utilities import notify, log_me, safe_request
-from m5.model import Checkin, Client, Checkpoint, Order, Base
+from m5.model import Base
 
 
 class User:
