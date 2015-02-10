@@ -1,11 +1,12 @@
 """ User classes and related stuff. """
 
+from os import path
 from getpass import getpass
 from requests import Session as RemoteSession
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from m5.utilities import notify, log_me, safe_request
+from m5.utilities import notify, log_me, safe_request, DEBUG
 from m5.model import Base
 
 
@@ -15,8 +16,6 @@ class User:
     for User (http://messenger.de). This is the default user class.
     It can theoretically be overridden for other courier companies.
     """
-
-    _DEBUG = True
 
     def __init__(self, username: str=None, password: str=None):
         """  Authenticate the user on the remote server and initialise the local database. """
@@ -30,13 +29,13 @@ class User:
         self._authenticate(self.username, self._password)
 
         # One database per user
-        self.path = '../users/%s/database.sqlite' % self.username
-        self.engine = create_engine('sqlite:///%s' % self.path, echo=self._DEBUG)
+        self.path = '../db/%s.sqlite' % self.username
+        self.engine = create_engine('sqlite:///%s' % self.path, echo=DEBUG)
         self.Base = Base.metadata.create_all(self.engine)
 
         # We query on this:
-        Session = sessionmaker(bind=self.engine)
-        self.session = Session()
+        _Session = sessionmaker(bind=self.engine)
+        self.session = _Session()
 
     @log_me
     @safe_request

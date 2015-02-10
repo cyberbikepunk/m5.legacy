@@ -66,7 +66,7 @@ class Checkin(Base):
     order_id = Column(Integer, ForeignKey('order.order_id'), nullable=False)
     timestamp = Column(DateTime, nullable=False)
     purpose = Column(Enum('pickup', 'dropoff'))
-    after = Column(DateTime)
+    after_ = Column(DateTime)
     until = Column(DateTime)
 
     checkpoint = relationship('Checkpoint', backref=backref('checkin'))
