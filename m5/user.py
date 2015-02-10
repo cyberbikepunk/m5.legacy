@@ -1,8 +1,8 @@
 """ User classes and related stuff. """
 
-from os import path
+from os.path import dirname, join
 from getpass import getpass
-from requests import Session as RemoteSession
+from requests import Session as RequestsSession
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -23,44 +23,47 @@ class User:
         self.username = username
         self._password = password
 
-        # The company server
-        self.remote_server = 'http://bamboo-mec.de/'
-        self.remote_session = RemoteSession()
+        # Say hello to the company server
+        self.remote_session = RequestsSession()
         self._authenticate(self.username, self._password)
 
-        # One database per user
-        self.path = '../db/%s.sqlite' % self.username
-        self.engine = create_engine('sqlite:///%s' % self.path, echo=DEBUG)
+        # Make paths bulletproof
+        self.m5_path = dirname(__file__)
+        self.db_path = join(self.m5_path, '../db/%s.sqlite' % self.username)
+        self.download_path = join(self.m5_path, '../downloads/')
+
+        # Create one database per user
+        self.engine = create_engine('sqlite:///%s' % self.db_path, echo=DEBUG)
         self.Base = Base.metadata.create_all(self.engine)
 
-        # We query on this:
+        # Start a database query session
         _Session = sessionmaker(bind=self.engine)
         self.session = _Session()
 
     @log_me
     @safe_request
     def _authenticate(self, username=None, password=None):
-        """ Make login attempts until successful. """
+        """ Make recursive login attempts until successful. """
 
         if not username:
             self.username = input('Enter username: ')
         if not password:
             self._password = getpass('Enter password: ')
 
-        login_url = self.remote_server + 'll.php5'
+        url = 'http://bamboo-mec.de/ll.php5'
         credentials = {'username': self.username,
                        'password': self._password}
 
-        # The server doesn't seem to care but
+        # The server doesn't seem to care but...
         headers = {'user-agent': 'Mozilla/5.0'}
         self.remote_session.headers.update(headers)
 
-        response = self.remote_session.post(login_url, credentials)
+        response = self.remote_session.post(url, credentials)
 
         if not response.ok:
             self._authenticate()
         else:
-            notify('You are now logged in to {}.', self.remote_server)
+            notify('Now logged in.')
 
     def quit(self):
         """ Make a clean exit from the program. """
@@ -71,7 +74,7 @@ class User:
     def _logout(self):
         """ Logout from the server and close the session. """
 
-        url = self.remote_server + 'index.php5'
+        url = 'http://bamboo-mec.de/index.php5'
         payload = {'logout': '1'}
 
         response = self.remote_session.get(url, params=payload)

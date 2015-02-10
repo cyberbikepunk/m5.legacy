@@ -5,7 +5,7 @@ from collections import namedtuple
 
 DEBUG = True
 
-Stamped = namedtuple('Stamped', ['job_id', 'data'])
+Stamped = namedtuple('Stamped', ['stamp', 'data'])
 Stamp = namedtuple('Stamp', ['date', 'uuid'])
 
 

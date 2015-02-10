@@ -1,4 +1,5 @@
 """ Downloader, Scraper and Packager classes. """
+from os import path
 
 from geopy.exc import GeocoderTimedOut
 from os.path import isfile
@@ -24,18 +25,17 @@ from m5.model import Checkin, Checkpoint, Client, Order
 
 class Downloader():
 
-    def __init__(self, username: str, server: str, session: Session, overwrite: bool=False):
+    def __init__(self, session: Session, directory: str, overwrite: bool=False):
         """ Instantiate a re-useable Downloader object.
 
-        :param username: the current user
-        :param server: the url of the server
+        :param directory: absolute path to download directory
+        :param overwrite: force file overwrite
         :param session: the current remote session
         """
 
-        self.server = server
-        self._path = 'll.php5'
+        self.url = 'http://bamboo-mec.de/ll_detail.php5'
         self._session = session
-        self.username = username
+        self.directory = directory
         self.overwrite = overwrite
 
     @log_me
@@ -51,14 +51,15 @@ class Downloader():
         if day is None:
             day = date.today()
 
-        soups = list()
-
         # Go browse the web-page for that day
         # and scrape off uuid(ish) parameters.
         uuids = self._scrape_uuids(day)
 
+        soups = list()
+
         if not uuids:
             if DEBUG:
+                soups = None
                 notify('No jobs on {}.', str(day))
 
         else:
@@ -73,7 +74,7 @@ class Downloader():
                     verb = 'Downloaded'
 
                 if DEBUG:
-                    notify('{}/{}. {} {}.', i+1, len(uuids), verb, str(day))
+                    notify('{} {}/{} for {} {}.', verb, i+1, len(uuids), str(day), uuid)
 
                 soups.append(Stamped(stamp, soup))
 
@@ -88,17 +89,17 @@ class Downloader():
         :return: A set of uuid strings
         """
 
-        url = self.server + self._path
-        payload = {'status': 'delivered',
-                   'datum': day.strftime('%d.%m.%Y')}
-
+        url = 'http://bamboo-mec.de/ll.php5'
+        payload = {'status': 'delivered', 'datum': day.strftime('%d.%m.%Y')}
         response = self._session.get(url, params=payload)
-        # The uuids are not strict uuids and not so unique:
-        # they are 7 digit numbers. But they're called uuids.
+
+        # The so called uuids are
+        # actually 7 digit numbers.
         pattern = 'uuid=(\d{7})'
+
         jobs = findall(pattern, response.text)
 
-        # Each uuid string appears twice: dump the duplicates.
+        # Dump the duplicates.
         return set(jobs)
 
     def _get_job(self, stamp: Stamp) -> BeautifulSoup:
@@ -108,12 +109,11 @@ class Downloader():
         :return: html as a beautiful soup object
         """
 
-        url = self.server + 'll_detail.php5'
         payload = {'status': 'delivered',
                    'uuid': stamp.uuid,
                    'datum': stamp.date.strftime('%d.%m.%Y')}
 
-        response = self._session.get(url, params=payload)
+        response = self._session.get(self.url, params=payload)
 
         soup = BeautifulSoup(response.text)
         self._save_job(stamp, soup)
@@ -122,16 +122,14 @@ class Downloader():
 
     def _filepath(self, stamp: Stamp):
         """ Where a job's downloaded html file is saved. """
-        return '../downloads/%s/%s_uuid-%s.html' % (self.username,
-                                                    stamp.date.strftime('%Y-%m-%d'),
-                                                    stamp.uuid)
+        filename = '%s-uuid-%s.html' % (stamp.date.strftime('%Y-%m-%d'), stamp.uuid)
+        return path.join(self.directory, filename)
 
     def _job_url(self, stamp: Stamp):
         """ The url of the web-page for a job. """
-        return '{}{}?status=delivered&uuid={}&datum={}'.format(self.server,
-                                                               self._path,
-                                                               stamp.uuid,
-                                                               stamp.date.strftime('%d.%m.%Y'))
+        return '{}?status=delivered&uuid={}&datum={}'.format(self.url,
+                                                             stamp.uuid,
+                                                             stamp.date.strftime('%d.%m.%Y'))
 
     def _is_cached(self, stamp: namedtuple):
         """ True if that job already has a local file. """

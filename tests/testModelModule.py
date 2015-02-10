@@ -7,6 +7,7 @@ from random import randint, choice, uniform
 from uuid import uuid4
 from datetime import datetime
 from os import remove
+from os.path import dirname, join
 
 from m5.model import Checkin, Checkpoint, Client, Order, Base
 
@@ -16,7 +17,7 @@ class TestModelModule(TestCase):
     def setUp(self):
         """  Set up a temporary database. """
 
-        self.path = '../db/unittest.db'
+        self.path = join(dirname(__file__), 'temp', 'db-sqlite')
         engine = create_engine('sqlite:///%s' % self.path, echo=True)
 
         Base.metadata.create_all(engine)
@@ -80,6 +81,3 @@ class TestModelModule(TestCase):
 
         # Feed the beast
         self.session.commit()
-
-if __name__ == "__main__":
-    main()
