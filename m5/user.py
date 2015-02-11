@@ -30,7 +30,7 @@ class User:
         # Make paths bulletproof
         self.m5_path = dirname(__file__)
         self.db_path = join(self.m5_path, '../db/%s.sqlite' % self.username)
-        self.download_path = join(self.m5_path, '../downloads/')
+        self.downloads = join(self.m5_path, '../downloads/')
 
         # Create one database per user
         self.engine = create_engine('sqlite:///%s' % self.db_path, echo=DEBUG)

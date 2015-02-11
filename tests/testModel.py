@@ -12,13 +12,13 @@ from os.path import dirname, join
 from m5.model import Checkin, Checkpoint, Client, Order, Base
 
 
-class TestModelModule(TestCase):
+class TestModel(TestCase):
 
     def setUp(self):
         """  Set up a temporary database. """
 
         self.path = join(dirname(__file__), 'temp', 'db-sqlite')
-        engine = create_engine('sqlite:///%s' % self.path, echo=True)
+        engine = create_engine('sqlite:///%s' % self.path, echo=False)
 
         Base.metadata.create_all(engine)
 

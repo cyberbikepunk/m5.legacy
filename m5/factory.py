@@ -18,7 +18,7 @@ from m5.model import Checkin, Checkpoint, Client, Order
 
 # TODO Refactor this module DRY.
 #   - blueprints (scraping specifications) should be defined
-#     within the declarative model and unwrapped on the fly.
+#     within the db declarative model and unwrapped on the fly.
 #   - the geo-coding and unserialisation procedures should
 #     also be defined in the model and all dirty fixes removed.
 
@@ -33,10 +33,12 @@ class Downloader():
         :param session: the current remote session
         """
 
-        self.url = 'http://bamboo-mec.de/ll_detail.php5'
         self._session = session
         self.directory = directory
         self.overwrite = overwrite
+
+        # The base url for all requests:
+        self.url = 'http://bamboo-mec.de/ll_detail.php5'
 
     @log_me
     def download(self, day: date=None) -> list:
@@ -45,7 +47,7 @@ class Downloader():
         then save the raw html files and and return a list of beautiful soups.
         If that day has already been cached, serve the soup from the local file.
 
-        :return: a list of Stamped objects (Stamp, BeautifulSoup)
+        :return: a list of Stamped(Stamp, BeautifulSoup) objects
         """
 
         if day is None:
@@ -159,12 +161,12 @@ class Packager():
     def __init__(self):
         pass
 
-    def package_(self, serial_data: list) -> list:
+    def package(self, serial_items: list) -> list:
         """
         In goes serial data (raw strings) as returned by the Scraper. Out comes
         unserialized & packaged ORM table row objects digestable by the database.
 
-        :param serial_data: a list of Stamped tuples (Stamp, serial_data)
+        :param serial_items: a list of Stamped tuples (Stamp, serial_data)
         :return: a 4-tuple of lists (clients, orders, checkpoints, checkins)
         """
 
@@ -173,13 +175,13 @@ class Packager():
         checkpoints = list()
         checkins = list()
 
-        for data in serial_data:
+        for serial_item in serial_items:
 
             # Unpack the data
-            day = data[0][0]
-            uuid = data[0][1]
-            job_details = data[1][0]
-            addresses = data[1][1]
+            day = serial_item[0][0]
+            uuid = serial_item[0][1]
+            job_details = serial_item[1][0]
+            addresses = serial_item[1][1]
 
             client = Client(**{'client_id': self._unserialise(int, job_details['client_id']),
                                'name': self._unserialise(str, job_details['client_name'])})
@@ -212,18 +214,18 @@ class Packager():
                                            'postal_code': self._unserialise(int, address['postal_code']),
                                            'company': self._unserialise(str, address['company'])})
 
-                checkin = Checkin(**{'checkin_id': self._hash_timestamp(date, address['timestamp']),
+                checkin = Checkin(**{'checkin_id': self._hash_timestamp(day, address['timestamp']),
                                      'checkpoint_id': geocoded['osm_id'],
                                      'order_id': self._unserialise(int, job_details['order_id']),
-                                     'timestamp': self._unserialise_timestamp(date, address['timestamp']),
+                                     'timestamp': self._unserialise_timestamp(day, address['timestamp']),
                                      'purpose': self._unserialise_purpose(address['purpose']),
-                                     'after_': self._unserialise_timestamp(date, address['after']),
-                                     'until': self._unserialise_timestamp(date, address['until'])})
+                                     'after_': self._unserialise_timestamp(day, address['after']),
+                                     'until': self._unserialise_timestamp(day, address['until'])})
 
                 checkpoints.append(checkpoint)
                 checkins.append(checkin)
 
-            notify('Processed {} {}.', date, uuid)
+            notify('Packaged {}-uuid-{}.', str(day), uuid)
 
         # The order matters when we commit to the database
         # because foreign keys must be refer to existing
@@ -248,28 +250,30 @@ class Packager():
                         'city': raw_address['city'],
                         'country': 'Germany'}
 
-        _NULL = {'osm_id': None,
-                 'lat': None,
-                 'lon': None,
-                 'display_name': None}
+        nothing = {'osm_id': None,
+                   'lat': None,
+                   'lon': None,
+                   'display_name': None}
 
-        try:
-            response = g.geocode(json_address)
-        except GeocoderTimedOut:
-            notify('Nominatim timed out {}.', raw_address['address'])
-            geocoded = _NULL
+        if not all(json_address.values()):
+            notify('Geocoding impossible: missing field(s).')
+            return nothing
         else:
-            if response is None:
-                geocoded = _NULL
-                verb = 'failed'
+            try:
+                response = g.geocode(json_address)
+            except GeocoderTimedOut:
+                notify('Nominatim timed out {}.', raw_address['address'])
+                geocoded = nothing
             else:
-                geocoded = response.raw
-                verb = 'matched'
+                if response is None:
+                    geocoded = nothing
+                    verb = 'failed'
+                else:
+                    geocoded = response.raw
+                    verb = 'matched'
 
-            if DEBUG:
-                notify('Nominatim {} {}.', verb, raw_address['address'])
-                pp = PrettyPrinter()
-                pp.pprint(response.raw)
+                if DEBUG:
+                    notify('Nominatim {} {}.', verb, raw_address['address'])
 
         return geocoded
 
@@ -288,7 +292,7 @@ class Packager():
             return type_cast(raw_value)
 
     @staticmethod
-    def _unserialise_purpose(raw_value):
+    def _unserialise_purpose(raw_value: str):
         """ This is a dirty fix """
         if raw_value is 'Abholung':
             return 'pickup'
@@ -298,7 +302,7 @@ class Packager():
             return None
 
     @staticmethod
-    def _unserialise_timestamp(day, raw_time):
+    def _unserialise_timestamp(day, raw_time: str):
         """ This is a dirty fix """
         if raw_time in ('', None):
             return None
@@ -311,7 +315,7 @@ class Packager():
                             minute=t.tm_min)
 
     @staticmethod
-    def _unserialise_type(raw_value):
+    def _unserialise_type(raw_value: str):
         """ This is a dirty fix """
         if raw_value is 'OV':
             return 'overnight'
@@ -323,7 +327,7 @@ class Packager():
             return None
 
     @staticmethod
-    def _hash_timestamp(day, raw_time):
+    def _hash_timestamp(day, raw_time: str):
         """ This is a dirty fix """
         if raw_time in (None, ''):
             return None
@@ -337,7 +341,7 @@ class Packager():
             return d.__hash__()
 
     @staticmethod
-    def _unserialise_float(raw_price):
+    def _unserialise_float(raw_price: str):
         """ This is a dirty fix """
         if raw_price in (None, ''):
             return None
@@ -376,51 +380,48 @@ class Scraper:
 
     @time_me
     @log_me
-    def scrape(self, soup_data: list) -> list:
+    def scrape(self, soup_items: list) -> list:
         """
-        In goes a bunch of html files in the form of beautiful soups,
+        In goes a bunch of html files (in the form of beautiful soups),
         out comes serial data, i.e. dictionaries of field name/value
         pairs, where values are raw strings.
 
-        :param soup_data: Stamped tuples (Stamp, BeautifulSoup)
-        :return serial_data: normal tuples (job_details, addresses)
+        :param soup_items: Stamped(Stamp, BeautifulSoup)
+        :return: Stamped(Stamp, (job_details, addresses))
         """
 
-        serial_data = list()
+        serial_items = list()
 
-        for i, stamped_soup in enumerate(soup_data):
-            stamp = stamped_soup[0]
-            soup = stamped_soup[1]
+        for i, soup_item in enumerate(soup_items):
+            job_details, addresses = self._scrape_job(soup_item)
+            serial_item = Stamped(soup_item.stamp, (job_details, addresses))
 
-            job_details, addresses = self._scrape_job(soup.soup, stamp)
-            serial_item = Stamped(stamp, (job_details, addresses))
-
-            serial_data.append(serial_item)
+            serial_items.append(serial_item)
 
             if DEBUG:
-                notify('{}/{}. Scraped {}: {}.', i,
-                       len(soup_data),
-                       stamp.uuid,
-                       str(stamp.date))
+                notify('{}/{}. Scraped {}-uuid-{}.html',
+                       i+1,
+                       len(soup_items),
+                       soup_item.stamp.date.strftime('%Y-%m-%d'),
+                       soup_item.stamp.uuid)
 
                 pp = PrettyPrinter()
                 pp.pprint(serial_item)
 
-        return serial_data
+        return serial_items
 
-    def _scrape_job(self, soup: BeautifulSoup, stamp: Stamp) -> tuple:
+    def _scrape_job(self, soup_item: Stamped) -> tuple:
         """
         Scrape out of a job's web page using bs4 and re modules.
         In goes the soup, out come dictionaries contaning field
         sname/value pairs as raw trings.
 
-        :param soup: the job's web page as a soup
-        :param stamp: the job id
+        :param soup_item: the job's web page as a soup
         :return: job_details and addresses as a tuple
         """
 
         # Pass the soup through the sieve
-        soup = soup.find(id='order_detail')
+        soup = soup_item.data.find(id='order_detail')
 
         # Step 1: scrape job details
         job_details = dict()
@@ -431,7 +432,7 @@ class Scraper:
         for fragment in fragments:
             soup_fragment = soup.find_next(name=self._TAGS[fragment]['name'])
             fields_subset = self._scrape_fragment(self._BLUEPRINTS[fragment], soup_fragment,
-                                                  stamp.uuid, fragment)
+                                                  soup_item.stamp.uuid, fragment)
             job_details.update(fields_subset)
 
         # Step 1.2: the price table
@@ -446,7 +447,7 @@ class Scraper:
         addresses = list()
         for soup_fragment in soup_fragments:
             address = self._scrape_fragment(self._BLUEPRINTS['address'], soup_fragment,
-                                            stamp.uuid, 'address')
+                                            soup_item.stamp.uuid, 'address')
 
             addresses.append(address)
 
