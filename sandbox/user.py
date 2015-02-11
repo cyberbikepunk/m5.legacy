@@ -9,7 +9,7 @@ from requests import Request, Session
 from getpass import getpass
 
 
-from m5.factory import Miner
+from m5.factory import Scraper
 
 
 def _safe_request(session, request):
@@ -197,7 +197,7 @@ class Messenger:
         """ If that date hasn't been scraped before, scrape it! """
         date_string = date.strftime('%d-%m-%Y')
         # Switch on the engine
-        m = Miner(date=date, session=self._session, server=self._server)
+        m = Scraper(date=date, session=self._session, server=self._server)
 
         # Been there, done that
         if date in self._miners:
@@ -220,7 +220,7 @@ class Messenger:
                     # We don't pickle the data yet: instead, we
                     # pickle multiple days at once before exit.
                     soup = m._get_job(j)
-                    raw_data = m._scrape(soup)
+                    raw_data = m._scrape_job(soup)
                     m.process_job(raw_data)
 
                     # So wanna see results?

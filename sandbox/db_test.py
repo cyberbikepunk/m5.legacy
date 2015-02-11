@@ -1,7 +1,7 @@
 """ This module defines our local database model. """
 
-from sqlalchemy import Table, Column, ForeignKey
-from sqlalchemy.types import Integer, Float, String, Boolean, Enum, DateTime
+from sqlalchemy import Column, ForeignKey
+from sqlalchemy.types import Integer, Float, String, Boolean, Enum
 from sqlalchemy.orm import sessionmaker, relationship, backref
 from sqlalchemy.ext.declarative import declarative_base, synonym_for
 from sqlalchemy import create_engine
@@ -78,7 +78,7 @@ class Checkpoint(Base):
 
 
 if __name__ == '__main__':
-    engine = create_engine('sqlite:///test9.db', echo=True)
+    engine = create_engine('sqlite:///../data/test_1.db', echo=True)
     Base.metadata.create_all(engine)
 
     Session = sessionmaker(bind=engine)
