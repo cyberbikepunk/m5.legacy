@@ -37,7 +37,7 @@ class Downloader():
         self.directory = directory
         self.overwrite = overwrite
 
-        # The base url for all requests:
+        # The base url for all download requests:
         self.url = 'http://bamboo-mec.de/ll_detail.php5'
 
     @log_me
