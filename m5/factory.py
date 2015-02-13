@@ -1,20 +1,20 @@
 """ Downloader, Scraper and Packager classes. """
-from os import path
 
+from os import path
 from geopy.exc import GeocoderTimedOut
 from os.path import isfile
 from geopy import Nominatim
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from time import strptime
-from requests import Session
+from requests import Session as RemoteSession
 from bs4 import BeautifulSoup
 from pprint import PrettyPrinter
 from re import findall, match
-from collections import namedtuple
+from sqlalchemy.orm.session import Session as DatabaseSession
 
-from m5.utilities import notify, log_me, time_me, Stamped, Stamp, DEBUG
+from m5.utilities import notify, log_me, time_me, Stamped, Stamp, Tables, DEBUG
 from m5.model import Checkin, Checkpoint, Client, Order
-
+from m5.user import User
 
 # TODO Refactor this module DRY.
 #   - blueprints (scraping specifications) should be defined
@@ -23,77 +23,136 @@ from m5.model import Checkin, Checkpoint, Client, Order
 #     also be defined in the model and all dirty fixes removed.
 
 
-class Downloader():
+class Factory():
+    """
+    The factory class is the API for data migrations from the remote server to the local database.
+    It's basically a user-friendly wrapper around the Miner, Scraper, Packager and Pusher classes.
+    """
 
-    def __init__(self, session: Session, directory: str, overwrite: bool=False):
-        """ Instantiate a re-useable Downloader object.
+    def __init__(self, user: User, overwrite: bool=None):
+        """  Prepare everything we need for a data migration process. """
 
-        :param directory: absolute path to download directory
-        :param overwrite: force file overwrite
-        :param session: the current remote session
-        """
+        assert isinstance(user, User), 'Argument 1 must be a User object'
 
-        self._session = session
-        self.directory = directory
+        # Factory departments
+        self.miner = Miner(user.remote_session, user.downloads, overwrite=overwrite)
+        self.scraper = Scraper()
+        self.packager = Packager()
+        self.pusher = Pusher(user.database_session)
+
+    def migrate(self, begin: date, end: date):
+        """  Migrate bulk data from the remote server into the local database. """
+
+        assert isinstance(begin, date), 'Argument 1 must be a date object'
+        assert isinstance(end, date), 'Argument 2 must be a date object'
+
+        period = end - begin
+        iterator = range(period.days)
+
+        for i in iterator:
+            # Take one day's worth of data and
+            # walk through the data migration
+            # process from beginning to end
+            day = begin + timedelta(days=i)
+
+            soup_jobs = self.mine(day)
+            serial_jobs = self.scrape(soup_jobs)
+            table_jobs = self.package(serial_jobs)
+            self.push(table_jobs)
+
+            print('Migrated {n}/{N} ({percent}%).'
+                  .format(n=i, N=len(iterator), percent=i/len(iterator)))
+
+    def push(self, table_jobs: Tables) -> dict:
+        return self.pusher.push(table_jobs)
+
+    def package(self, serial_jobs: list) -> Tables:
+        return self.packager.package(serial_jobs)
+
+    def scrape(self, soup_jobs: list) -> list:
+        return self.scraper.scrape(soup_jobs)
+
+    def mine(self, day: date) -> list:
+        return self.miner.mine(day)
+
+
+class Pusher():
+
+    def __init__(self, db: DatabaseSession):
+        self.db = db
+
+    def push(self, table_jobs: Tables):
+        pass
+
+
+class Miner():
+    """ The Miner class downloads data from the remote server in the form of html files. """
+
+    def __init__(self, remote_session: RemoteSession, directory: str, overwrite: bool=None):
+        """ Instantiate a re-useable Miner object. """
+
         self.overwrite = overwrite
+        self.remote_session = remote_session
+        self.directory = directory
 
-        # The base url for all download requests:
-        self.url = 'http://bamboo-mec.de/ll_detail.php5'
+        # The current job
+        self.stamp = None
 
-    @log_me
-    def download(self, day: date=None) -> list:
+    def mine(self, day: date):
         """
-        Download the web-page showing one day of messenger data from the server,
-        then save the raw html files and and return a list of beautiful soups.
+        Download the web-page showing one day of messenger data from the server.
+        Then save the raw html files and and return a list of beautiful soups.
         If that day has already been cached, serve the soup from the local file.
 
-        :return: a list of Stamped(Stamp, BeautifulSoup) objects
+        :return: a list of Stamped beautiful soups
         """
 
-        if day is None:
-            day = date.today()
+        assert isinstance(day, date), 'Argument must be a date object'
 
-        # Go browse the web-page for that day
-        # and scrape off uuid(ish) parameters.
+        # Go browse the 'summary' for that day
+        # and find out how many jobs we have.
         uuids = self._scrape_uuids(day)
 
-        soups = list()
+        soup_jobs = list()
 
         if not uuids:
+            soup_jobs = None
+
             if DEBUG:
-                soups = None
-                notify('No jobs on {}.', str(day))
+                print('No jobs on {day}.'.format(day=str(day)))
 
         else:
             for i, uuid in enumerate(uuids):
-                stamp = Stamp(day, uuid)
+                self.stamp = Stamp(day, uuid)
 
-                if self._is_cached(stamp) and not self.overwrite:
-                    soup = self._load_job(stamp)
+                if self._is_cached() and not self.overwrite:
+                    soup = self._load_job()
                     verb = 'Loaded'
                 else:
-                    soup = self._get_job(stamp)
+                    soup = self._get_job()
                     verb = 'Downloaded'
 
                 if DEBUG:
-                    notify('{} {}/{} for {} {}.', verb, i+1, len(uuids), str(day), uuid)
+                    print('{verb} {n}/{N}. {url}'.
+                          format(verb=verb, n=i+1, N=len(uuids), url=self._job_url()))
 
-                soups.append(Stamped(stamp, soup))
+                soup_jobs.append(Stamped(self.stamp, soup))
 
-        return soups
+        return soup_jobs
 
     def _scrape_uuids(self, day: date) -> set:
-        """
-        Return unique uuid request parameters for each
-        job by scraping the overview page for that date.
+        """ Return uuid request parameters for each job by scraping the summary page. """
 
-        :param day: a single day
-        :return: A set of uuid strings
-        """
+        # Reset the current job
+        self.stamp = Stamp(day, 'NO_JOBS')
+
+        # Avoid doing things twice
+        if self._is_cached():
+            return None
 
         url = 'http://bamboo-mec.de/ll.php5'
         payload = {'status': 'delivered', 'datum': day.strftime('%d.%m.%Y')}
-        response = self._session.get(url, params=payload)
+        response = self.remote_session.get(url, params=payload)
 
         # The so called uuids are
         # actually 7 digit numbers.
@@ -104,54 +163,47 @@ class Downloader():
         # Dump the duplicates.
         return set(jobs)
 
-    def _get_job(self, stamp: Stamp) -> BeautifulSoup:
-        """ Browse the web-page for that day and return a beautiful soup.
+    def _get_job(self) -> BeautifulSoup:
+        """ Browse the web-page for that day and return a beautiful soup. """
 
-        :param stamp: the job Stamp tuple (date, uuid)
-        :return: html as a beautiful soup object
-        """
-
+        url = 'http://bamboo-mec.de/ll_detail.php5'
         payload = {'status': 'delivered',
-                   'uuid': stamp.uuid,
-                   'datum': stamp.date.strftime('%d.%m.%Y')}
-
-        response = self._session.get(self.url, params=payload)
+                   'uuid': self.stamp.uuid,
+                   'datum': self.stamp.date.strftime('%d.%m.%Y')}
+        response = self.remote_session.get(url, params=payload)
 
         soup = BeautifulSoup(response.text)
-        self._save_job(stamp, soup)
+        self._save_job(soup)
 
         return soup
 
-    def _filepath(self, stamp: Stamp):
-        """ Where a job's downloaded html file is saved. """
-        filename = '%s-uuid-%s.html' % (stamp.date.strftime('%Y-%m-%d'), stamp.uuid)
+    def _filepath(self):
+        """ Where a job's html file is saved. """
+        filename = '%s-uuid-%s.html' % (self.stamp.date.strftime('%Y-%m-%d'), self.stamp.uuid)
         return path.join(self.directory, filename)
 
-    def _job_url(self, stamp: Stamp):
+    def _job_url(self):
         """ The url of the web-page for a job. """
-        return '{}?status=delivered&uuid={}&datum={}'.format(self.url,
-                                                             stamp.uuid,
-                                                             stamp.date.strftime('%d.%m.%Y'))
+        return 'http://bamboo-mec.de/ll_detail.php5?status=delivered&uuid={uuid}&datum={date}'\
+            .format(uuid=self.stamp.uuid, date=self.stamp.date.strftime('%d.%m.%Y'))
 
-    def _is_cached(self, stamp: namedtuple):
+    def _is_cached(self):
         """ True if that job already has a local file. """
-        if isfile(self._filepath(stamp)):
+        if isfile(self._filepath()):
             return True
         else:
             return False
 
-    def _save_job(self, stamp: namedtuple, soup: BeautifulSoup):
-        """ Prettify the html for that date and save it to file. """
+    def _save_job(self, soup: BeautifulSoup):
+        """ Prettify the html and save it to file. """
         pretty_html = soup.prettify()
-        with open(self._filepath(stamp), 'w+') as f:
+        with open(self._filepath(), 'w+') as f:
             f.write(pretty_html)
-            f.close()
 
-    def _load_job(self, stamp: namedtuple):
+    def _load_job(self):
         """ Load a file from cache and return a beautiful soup. """
-        with open(self._filepath(stamp), 'r') as f:
+        with open(self._filepath(), 'r') as f:
             html = f.read()
-            f.close()
         return BeautifulSoup(html)
 
 
@@ -161,13 +213,13 @@ class Packager():
     def __init__(self):
         pass
 
-    def package(self, serial_items: list) -> list:
+    def package(self, serial_items: list) -> Tables:
         """
         In goes serial data (raw strings) as returned by the Scraper. Out comes
         unserialized & packaged ORM table row objects digestable by the database.
 
-        :param serial_items: a list of Stamped tuples (Stamp, serial_data)
-        :return: a 4-tuple of lists (clients, orders, checkpoints, checkins)
+        :param serial_items: a list of Stamped(Stamp, serial_data) objects
+        :return: a Tables(clients, orders, checkpoints, checkins) object
         """
 
         clients = list()
@@ -230,7 +282,7 @@ class Packager():
         # The order matters when we commit to the database
         # because foreign keys must be refer to existing
         # rows in related tables, c.f. the model module.
-        tables = (clients, orders, checkpoints, checkins)
+        tables = Tables(clients, orders, checkpoints, checkins)
 
         return tables
 
@@ -256,24 +308,27 @@ class Packager():
                    'display_name': None}
 
         if not all(json_address.values()):
-            notify('Geocoding impossible: missing field(s).')
+            if DEBUG:
+                print('Nominatim skipped {street} due to missing field(s).'
+                      .format(street=raw_address['address']))
             return nothing
         else:
             try:
                 response = g.geocode(json_address)
             except GeocoderTimedOut:
-                notify('Nominatim timed out {}.', raw_address['address'])
+                print('Nominatim timed out for {street}.'
+                      .format(street=raw_address['address']))
                 geocoded = nothing
             else:
                 if response is None:
                     geocoded = nothing
-                    verb = 'failed'
+                    verb = 'failed to match'
                 else:
                     geocoded = response.raw
                     verb = 'matched'
-
                 if DEBUG:
-                    notify('Nominatim {} {}.', verb, raw_address['address'])
+                    print('Nominatim {verb} {street}.'
+                          .format(verb=verb, street=raw_address['address']))
 
         return geocoded
 
@@ -376,45 +431,52 @@ class Scraper:
                                    until={'line_nb': -3, 'pattern': r'(?:.*)bis\s+(\d{2}:\d{2})', 'nullable': True})}
 
     def __init__(self):
-        pass
+        self.stamp = None
 
     @time_me
     @log_me
-    def scrape(self, soup_items: list) -> list:
+    def scrape(self, soup_jobs: list) -> list:
         """
         In goes a bunch of html files (in the form of beautiful soups),
         out comes serial data, i.e. dictionaries of field name/value
         pairs, where values are raw strings.
 
-        :param soup_items: Stamped(Stamp, BeautifulSoup)
+        :param soup_jobs: Stamped(Stamp, BeautifulSoup)
         :return: Stamped(Stamp, (job_details, addresses))
         """
 
-        serial_items = list()
+        serial_jobs = list()
 
-        for i, soup_item in enumerate(soup_items):
-            job_details, addresses = self._scrape_job(soup_item)
-            serial_item = Stamped(soup_item.stamp, (job_details, addresses))
+        for i, soup_job in enumerate(soup_jobs):
+            self.stamp = soup_job.stamp
 
-            serial_items.append(serial_item)
+            job_details, addresses = self._scrape_job(soup_job)
+            serial_job = Stamped(soup_job.stamp, (job_details, addresses))
+
+            serial_jobs.append(serial_job)
 
             if DEBUG:
-                notify('{}/{}. Scraped {}-uuid-{}.html',
-                       i+1,
-                       len(soup_items),
-                       soup_item.stamp.date.strftime('%Y-%m-%d'),
-                       soup_item.stamp.uuid)
+                print('Scraped {n}/{N}: {date}-uuid-{uuid}.html'
+                      .format(date=str(soup_job.stamp.date),
+                              uuid=soup_job.stamp.uuid,
+                              N=len(soup_jobs),
+                              n=i+1))
 
                 pp = PrettyPrinter()
-                pp.pprint(serial_item)
+                pp.pprint(serial_job)
 
-        return serial_items
+        return serial_jobs
+
+    def _job_url(self):
+        """ The url of the web-page for a job. """
+        return 'http://bamboo-mec.de/ll_detail.php5?status=delivered&uuid={uuid}&datum={date}'\
+            .format(uuid=self.stamp.uuid, date=self.stamp.date.strftime('%d.%m.%Y'))
 
     def _scrape_job(self, soup_item: Stamped) -> tuple:
         """
         Scrape out of a job's web page using bs4 and re modules.
         In goes the soup, out come dictionaries contaning field
-        sname/value pairs as raw trings.
+        name/value pairs as raw strings.
 
         :param soup_item: the job's web page as a soup
         :return: job_details and addresses as a tuple
@@ -432,7 +494,7 @@ class Scraper:
         for fragment in fragments:
             soup_fragment = soup.find_next(name=self._TAGS[fragment]['name'])
             fields_subset = self._scrape_fragment(self._BLUEPRINTS[fragment], soup_fragment,
-                                                  soup_item.stamp.uuid, fragment)
+                                                  soup_item.stamp, fragment)
             job_details.update(fields_subset)
 
         # Step 1.2: the price table
@@ -447,14 +509,14 @@ class Scraper:
         addresses = list()
         for soup_fragment in soup_fragments:
             address = self._scrape_fragment(self._BLUEPRINTS['address'], soup_fragment,
-                                            soup_item.stamp.uuid, 'address')
+                                            soup_item.stamp, 'address')
 
             addresses.append(address)
 
         return job_details, addresses
 
     def _scrape_fragment(self,
-                         blueprint: dict,
+                         blueprints: dict,
                          soup_fragment: BeautifulSoup,
                          stamp: Stamp,
                          tag: str) -> dict:
@@ -462,7 +524,7 @@ class Scraper:
         Scrape a fragment of the page. In goes hmtl
         with the blueprint, out comes a dictionary.
 
-        :param blueprint: the instructions
+        :param blueprints: the instructions
         :param soup_fragment: an html fragment
         :return: field name/value pairs
         """
@@ -477,25 +539,25 @@ class Scraper:
         # Split the inner contents of the html tag into a list of lines
         contents = list(soup_fragment.stripped_strings)
 
-        collected = dict()
+        collected = {}
 
         # Collect each field one by one, even if that
         # means returning to the same line several times.
-        for field_name, field in blueprint.items():
+        for field, blueprint in blueprints.items():
             try:
-                matched = match(field['pattern'], contents[field['line_nb']])
+                matched = match(blueprint['pattern'], contents[blueprint['line_nb']])
             except IndexError:
-                collected[field_name] = None
+                collected[field] = None
                 if DEBUG:
-                    self._elucidate(stamp, field_name, field, contents, tag)
+                    self._elucidate(stamp, field, blueprint, contents, tag)
             else:
                 if matched:
-                    collected[field_name] = matched.group(1)
+                    collected[field] = matched.group(1)
                 else:
-                    collected[field_name] = None
-                    if not field['nullable']:
+                    collected[field] = None
+                    if not blueprint['nullable']:
                         if DEBUG:
-                            self._elucidate(stamp, field_name, field, contents, tag)
+                            self._elucidate(stamp, field, blueprint, contents, tag)
 
         return collected
 
@@ -547,15 +609,18 @@ class Scraper:
         :param context: the document fragment
         """
 
-        seperator = '*' * 50
+        seperator = '*' * 100
         print(seperator)
 
-        print('{} {}: Failed to scrape {} from {} on line {}.'.format(stamp.date,
-                                                                      stamp.uuid,
-                                                                      field_name,
-                                                                      context[blueprint['line']],
-                                                                      blueprint['line'], tag))
-        for line_nb, line in enumerate(context):
-            print(str(line_nb) + ': ' + line + '\n')
-
+        print('{date}-{uuid}: Failed to scrape {field} on line {nb} inside {tag}.'
+              .format(date=stamp.date,
+                      uuid=stamp.uuid,
+                      field=field_name,
+                      nb=blueprint['line_nb'],
+                      tag=tag))
+        if len(context):
+            for line_nb, line_content in enumerate(context):
+                print(str(line_nb) + ': ' + line_content)
+        else:
+            print('No html content inside {tag}'.format(tag=tag))
         print(seperator)

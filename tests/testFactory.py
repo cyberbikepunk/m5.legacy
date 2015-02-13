@@ -12,8 +12,9 @@ from random import sample
 from re import search, match
 from datetime import datetime, date
 
-from m5.factory import Scraper, Downloader, Packager
-from m5.utilities import Stamp, Stamped
+from m5.factory import Scraper, Miner, Packager
+from m5.utilities import Stamp, Stamped, Tables
+from m5.model import Client, Order, Checkin, Checkpoint
 
 
 class TestDownloader(TestCase):
@@ -35,7 +36,7 @@ class TestDownloader(TestCase):
 
         response = self.session.post(self.url, credentials)
         if response.ok:
-            print('Now logged in to %s.' % self.url)
+            print('Now logged into remote server.')
         else:
             print('Failed to log in')
             exit(1)
@@ -51,7 +52,7 @@ class TestDownloader(TestCase):
 
         if response.history[0].status_code == 302:
             # We have been redirected to the home page
-            print('Logged out successfully. Goodbye!')
+            print('Logged out from remote server. Goodbye!')
 
         self.session.close()
 
@@ -60,23 +61,23 @@ class TestDownloader(TestCase):
             if search(self.day.strftime('%Y-%m-%d'), file):
                 remove(join(self.directory, file))
 
-    def testDownloader(self):
-        """ Check if the Downloader class can download files correctly from the company server. """
+    def testMiner(self):
+        """ Check if the Miner class can download files correctly from the company server. """
 
-        d = Downloader(self.session,
-                       self.directory,
-                       overwrite=True)
+        m = Miner(self.session,
+                  self.directory,
+                  overwrite=True)
 
         random_day = randint(1, 28)
         random_month = randint(1, 12)
         self.day = date(2014, random_month, random_day)
 
         print('Testing file download for %s.' % str(self.day))
-        soups = d.download(self.day)
+        soups = m.mine(self.day)
 
         if not soups:
             # No jobs on that day... try again
-            self.testDownloader()
+            self.testMiner()
         else:
             for soup in soups:
                 self.assertIsInstance(soup.data, BeautifulSoup)
@@ -105,10 +106,11 @@ class TestScraper(TestCase):
         downloads = normpath(join(path_, '../downloads/m-134'))
 
         files = listdir(downloads)
+        files = [file for file in files if 'NO_JOBS' not in file]
 
         min_ = 1
         max_ = len(files)
-        size = 3
+        size = 100
 
         samples = sample(range(min_, max_), size)
         soup_items = list()
@@ -224,3 +226,14 @@ class TestPackager(TestCase):
         pp.pprint(tables)
 
         self.assertIsNotNone(tables)
+        self.assertIsInstance(tables, Tables)
+
+        self.assertIsInstance(tables.clients, list)
+        self.assertIsInstance(tables.orders, list)
+        self.assertIsInstance(tables.checkins, list)
+        self.assertIsInstance(tables.checkpoints, list)
+
+        self.assertIsInstance(tables.clients[0], Client)
+        self.assertIsInstance(tables.orders[0], Order)
+        self.assertIsInstance(tables.checkins[0], Checkin)
+        self.assertIsInstance(tables.checkpoints[0], Checkpoint)

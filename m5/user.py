@@ -38,7 +38,7 @@ class User:
 
         # Start a database query session
         _Session = sessionmaker(bind=self.engine)
-        self.session = _Session()
+        self.database_session = _Session()
 
     @log_me
     @safe_request
@@ -63,7 +63,7 @@ class User:
         if not response.ok:
             self._authenticate()
         else:
-            notify('Now logged in.')
+            print('Now logged into remote server.')
 
     def quit(self):
         """ Make a clean exit from the program. """
@@ -81,6 +81,6 @@ class User:
 
         if response.history[0].status_code == 302:
             # We have been redirected to the home page
-            notify('Logged out successfully. Goodbye!')
+            notify('Logged out. Goodbye!')
 
         self.remote_session.close()

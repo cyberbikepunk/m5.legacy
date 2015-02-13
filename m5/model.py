@@ -64,7 +64,7 @@ class Order(Base):
 
     client = relationship('Client', backref=backref('order'))
 
-    @synonym_for('client_id')
+    @synonym_for('order_id')
     @property
     def id(self):
         return self.order_id
