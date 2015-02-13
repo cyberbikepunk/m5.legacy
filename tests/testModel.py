@@ -1,7 +1,7 @@
 """ Various unittest scripts for the model module. """
 
 from unittest import TestCase
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, session
 from sqlalchemy import create_engine
 from random import randint, choice, uniform
 from uuid import uuid4
