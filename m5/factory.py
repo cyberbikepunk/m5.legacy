@@ -1,4 +1,6 @@
-""" Downloader, Scraper and Packager classes. """
+"""
+The factory module: to make it short, we're duplicating a database. But not the easiest way.
+"""
 
 from os import path
 from geopy.exc import GeocoderTimedOut
@@ -41,19 +43,19 @@ class Factory():
         self.pusher = Pusher(user.database_session)
 
     def migrate(self, begin: date, end: date):
-        """  Migrate bulk data from the remote server into the local database. """
+        """  Migrate data in bulk from the remote server into the local database. """
 
         assert isinstance(begin, date), 'Argument 1 must be a date object'
         assert isinstance(end, date), 'Argument 2 must be a date object'
 
         period = end - begin
-        iterator = range(period.days)
+        days = range(period.days)
 
-        for i in iterator:
+        for d in days:
             # Take one day's worth of data and
             # walk through the data migration
             # process from beginning to end
-            day = begin + timedelta(days=i)
+            day = begin + timedelta(days=d)
 
             soup_jobs = self.mine(day)
             serial_jobs = self.scrape(soup_jobs)
@@ -61,7 +63,7 @@ class Factory():
             self.push(table_jobs)
 
             print('Migrated {n}/{N} ({percent}%).'
-                  .format(n=i, N=len(iterator), percent=i/len(iterator)))
+                  .format(n=d, N=len(days), percent=d/len(days)))
 
     def push(self, table_jobs: Tables) -> dict:
         return self.pusher.push(table_jobs)
@@ -86,7 +88,7 @@ class Pusher():
 
 
 class Miner():
-    """ The Miner class downloads data from the remote server in the form of html files. """
+    """ The Miner class downloads html files from the remote server. """
 
     def __init__(self, remote_session: RemoteSession, directory: str, overwrite: bool=None):
         """ Instantiate a re-useable Miner object. """
@@ -100,8 +102,8 @@ class Miner():
 
     def mine(self, day: date):
         """
-        Download the web-page showing one day of messenger data from the server.
-        Then save the raw html files and and return a list of beautiful soups.
+        Download the web-page showing one day of messenger data.
+        Save the raw html files and and return a list of beautiful soups.
         If that day has already been cached, serve the soup from the local file.
 
         :return: a list of Stamped beautiful soups
@@ -143,7 +145,7 @@ class Miner():
     def _scrape_uuids(self, day: date) -> set:
         """ Return uuid request parameters for each job by scraping the summary page. """
 
-        # Reset the current job
+        # Reset
         self.stamp = Stamp(day, 'NO_JOBS')
 
         # Avoid doing things twice
@@ -154,7 +156,7 @@ class Miner():
         payload = {'status': 'delivered', 'datum': day.strftime('%d.%m.%Y')}
         response = self.remote_session.get(url, params=payload)
 
-        # The so called uuids are
+        # The so called 'uuids' are
         # actually 7 digit numbers.
         pattern = 'uuid=(\d{7})'
 
@@ -291,8 +293,7 @@ class Packager():
         """
         Geocode an address with Nominatim (http://nominatim.openstreetmap.org).
         The returned osm_id is used as the primary key in the checkpoint table.
-        As a result, if we can't geocode an address, it will won't make it into
-        the database.
+        So, if we can't geocode an address, it will won't make it into the database.
         """
     
         g = Nominatim()
@@ -301,6 +302,7 @@ class Packager():
                         'street': raw_address['address'],
                         'city': raw_address['city'],
                         'country': 'Germany'}
+        # TODO Must not default to Germany
 
         nothing = {'osm_id': None,
                    'lat': None,
@@ -463,7 +465,8 @@ class Scraper:
                               n=i+1))
 
                 pp = PrettyPrinter()
-                pp.pprint(serial_job)
+                pp.pprint(job_details)
+                pp.pprint(addresses)
 
         return serial_jobs
 
@@ -564,8 +567,8 @@ class Scraper:
     @staticmethod
     def _scrape_prices(soup_fragment: BeautifulSoup) -> dict:
         """
-        Scrape the 'prices' table at the bottom of the page. This section is
-        scraped seperately because it's already neatly formatted as a table.
+        Scrape the 'prices' table at the bottom of the page. There's no
+        objective reason why this section should be treated seperately.
 
         :param soup_fragment: parsed html
         :return: item/price pairs
@@ -583,6 +586,9 @@ class Scraper:
                 ('Stadt Stopp(s)', 'extra_stops'),
                 ('OV Ex Nat PU', 'overnight'),
                 ('ON Ex Nat Del.', 'overnight'),
+                ('OV EcoNat PU', 'overnight'),
+                ('OV Ex Int PU', 'overnight'),
+                ('ON Int Exp Del', 'overnight'),
                 ('EmpfangsbestÃ¤t.', 'fax_confirm'),
                 ('Wartezeit min.', 'waiting_time')]
 
@@ -611,7 +617,6 @@ class Scraper:
 
         seperator = '*' * 100
         print(seperator)
-
         print('{date}-{uuid}: Failed to scrape {field} on line {nb} inside {tag}.'
               .format(date=stamp.date,
                       uuid=stamp.uuid,

@@ -1,4 +1,4 @@
-""" User classes and related stuff. """
+""" User class and related stuff. """
 
 from os.path import dirname, join
 from getpass import getpass
@@ -59,7 +59,6 @@ class User:
         self.remote_session.headers.update(headers)
 
         response = self.remote_session.post(url, credentials)
-
         if not response.ok:
             self._authenticate()
         else:

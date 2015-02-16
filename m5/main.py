@@ -9,7 +9,7 @@ from pprint import PrettyPrinter
 def bulk_download():
 
     u = User('m-134', 'PASSWORD')
-    d = Miner(u.remote_session, u.username)
+    m = Miner(u.remote_session, u.username)
 
     start = date(2013, 3, 1)
     end = date(2014, 12, 24)
@@ -18,7 +18,7 @@ def bulk_download():
     soups = list()
     for n in range(delta.days):
         day = start + timedelta(days=n)
-        soup = d.download(day)
+        soup = m.mine(day)
         soups.append(soup)
 
     return soups
