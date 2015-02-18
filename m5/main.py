@@ -1,27 +1,38 @@
-""" A main script for the m5 module
-
-This script is intended for my private use while I'm developing.
-The idea is to log myself onto the company server and let me play
-with the module API. Once I'm happy, I'll write a web interface.
-"""
-
-from calendar import Calendar
-# from pprint import PrettyPrinter
+""" Small scripts using the m5 module API. """
 
 from m5.user import User
-from m5.factory import Miner
+from m5.factory import Miner, Factory
+from datetime import date, timedelta
 
-calendar = Calendar()
-dates = calendar.itermonthdates(2014, 12)
 
-u = User('m-134', 'PASSWORD')
+def bulk_download():
 
-for date in dates:
-    m = Miner(date, u.remote_server, u.remote_session)
-    m.mine()
-    m.process()
+    u = User('m-134', 'PASSWORD')
+    m = Miner(u.remote_session, u.username)
 
-    u.session.commit(m.clients)
-    u.session.commit(m.orders)
-    u.session.commit(m.checkins)
-    u.session.commit(m.checkpoints)
+    start = date(2013, 3, 1)
+    end = date(2014, 12, 24)
+    delta = end - start
+
+    soups = list()
+    for n in range(delta.days):
+        day = start + timedelta(days=n)
+        soup = m.mine(day)
+        soups.append(soup)
+
+    return soups
+
+
+def bulk_migrate():
+
+    u = User('m-134', 'PASSWORD')
+    factory = Factory(u)
+
+    start = date(2013, 3, 1)
+    stop = date(2014, 12, 24)
+
+    factory.migrate(start, stop)
+    
+
+if __name__ == '__main__':
+    bulk_migrate()

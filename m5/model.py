@@ -33,6 +33,18 @@ class Client(Base):
     def id(self):
         return self.client_id
 
+    def __str__(self):
+        """ Return something easy to read. """
+        strings = list()
+        keys = [k for k in self.__dict__.keys() if k[0] is not '_']
+        for key in keys:
+            strings.append('{key}={value}'.format(key=key, value=self.__dict__[key]))
+        return '<' + self.__class__.__name__ + ' (' + ', '.join(strings) + ')>'
+
+    def __repr__(self):
+        """ Return something easy to read. """
+        return self.__str__()
+
 
 class Order(Base):
     __tablename__ = 'order'
@@ -52,10 +64,22 @@ class Order(Base):
 
     client = relationship('Client', backref=backref('order'))
 
-    @synonym_for('client_id')
+    @synonym_for('order_id')
     @property
     def id(self):
         return self.order_id
+
+    def __str__(self):
+        """ Return something easy to read. """
+        strings = list()
+        keys = [k for k in self.__dict__.keys() if k[0] is not '_']
+        for key in keys:
+            strings.append('{key}={value}'.format(key=key, value=self.__dict__[key]))
+        return '<' + self.__class__.__name__ + ' (' + ', '.join(strings) + ')>'
+
+    def __repr__(self):
+        """ Return something easy to read. """
+        return self.__str__()
 
 
 class Checkin(Base):
@@ -66,7 +90,7 @@ class Checkin(Base):
     order_id = Column(Integer, ForeignKey('order.order_id'), nullable=False)
     timestamp = Column(DateTime, nullable=False)
     purpose = Column(Enum('pickup', 'dropoff'))
-    after = Column(DateTime)
+    after_ = Column(DateTime)
     until = Column(DateTime)
 
     checkpoint = relationship('Checkpoint', backref=backref('checkin'))
@@ -76,6 +100,18 @@ class Checkin(Base):
     @property
     def id(self):
         return self.checkin_id
+
+    def __str__(self):
+        """ Return something easy to read. """
+        strings = list()
+        keys = [k for k in self.__dict__.keys() if k[0] is not '_']
+        for key in keys:
+            strings.append('{key}={value}'.format(key=key, value=self.__dict__[key]))
+        return '<' + self.__class__.__name__ + ' (' + ', '.join(strings) + ')>'
+
+    def __repr__(self):
+        """ Return something easy to read. """
+        return self.__str__()
 
 
 class Checkpoint(Base):
@@ -95,3 +131,14 @@ class Checkpoint(Base):
     def id(self):
         return self.checkpoint_id
 
+    def __str__(self):
+        """ Return something easy to read. """
+        strings = list()
+        keys = [k for k in self.__dict__.keys() if k[0] is not '_']
+        for key in keys:
+            strings.append('{key}={value}'.format(key=key, value=self.__dict__[key]))
+        return '<' + self.__class__.__name__ + ' (' + ', '.join(strings) + ')>'
+
+    def __repr__(self):
+        """ Return something easy to read. """
+        return self.__str__()
