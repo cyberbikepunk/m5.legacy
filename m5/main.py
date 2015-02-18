@@ -1,9 +1,8 @@
 """ Small scripts using the m5 module API. """
 
 from m5.user import User
-from m5.factory import Miner, Scraper
+from m5.factory import Miner, Factory
 from datetime import date, timedelta
-from pprint import PrettyPrinter
 
 
 def bulk_download():
@@ -24,15 +23,16 @@ def bulk_download():
     return soups
 
 
-def bulk_scrape():
+def bulk_migrate():
 
-    s = Scraper()
-    pp = PrettyPrinter()
+    u = User('m-134', 'PASSWORD')
+    factory = Factory(u)
 
-    soups = bulk_download()
-    serial = s.scrape(soups)
-    pp.pprint(serial)
+    start = date(2013, 3, 1)
+    stop = date(2014, 12, 24)
 
+    factory.migrate(start, stop)
+    
 
 if __name__ == '__main__':
-    bulk_download()
+    bulk_migrate()

@@ -17,15 +17,17 @@ class User:
     It can theoretically be overridden for other courier companies.
     """
 
-    def __init__(self, username: str=None, password: str=None):
+    def __init__(self, username: str=None, password: str=None, local=False):
         """  Authenticate the user on the remote server and initialise the local database. """
 
         self.username = username
         self._password = password
+        self.local = local
 
         # Say hello to the company server
-        self.remote_session = RequestsSession()
-        self._authenticate(self.username, self._password)
+        if not local:
+            self.remote_session = RequestsSession()
+            self._authenticate(self.username, self._password)
 
         # Make paths bulletproof
         self.m5_path = dirname(__file__)

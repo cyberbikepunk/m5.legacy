@@ -12,6 +12,7 @@ from requests import Session as RemoteSession
 from bs4 import BeautifulSoup
 from pprint import PrettyPrinter
 from re import findall, match
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.session import Session as DatabaseSession
 
 from m5.utilities import notify, log_me, time_me, Stamped, Stamp, Tables, DEBUG
@@ -58,12 +59,13 @@ class Factory():
             day = begin + timedelta(days=d)
 
             soup_jobs = self.mine(day)
-            serial_jobs = self.scrape(soup_jobs)
-            table_jobs = self.package(serial_jobs)
-            self.push(table_jobs)
+            if soup_jobs:
+                serial_jobs = self.scrape(soup_jobs)
+                table_jobs = self.package(serial_jobs)
+                self.push(table_jobs)
 
             print('Migrated {n}/{N} ({percent}%).'
-                  .format(n=d, N=len(days), percent=d/len(days)))
+                  .format(n=d, N=len(days), percent=int((d+1)/len(days)*100)))
 
     def push(self, table_jobs: Tables) -> dict:
         return self.pusher.push(table_jobs)
@@ -80,11 +82,20 @@ class Factory():
 
 class Pusher():
 
-    def __init__(self, db: DatabaseSession):
-        self.db = db
+    def __init__(self, database_session: DatabaseSession):
+        self.database_session = database_session
 
-    def push(self, table_jobs: Tables):
-        pass
+    def push(self, tables: Tables):
+
+        for table in tables:
+            for row in table:
+                try:
+                    self.database_session.merge(row)
+                    self.database_session.commit()
+                except IntegrityError:
+                    self.database_session.rollback()
+                    print('Database Intergrity ERROR: {table}'
+                          .format(table=str(row)))
 
 
 class Miner():
@@ -119,9 +130,8 @@ class Miner():
 
         if not uuids:
             soup_jobs = None
-
             if DEBUG:
-                print('No jobs on {day}.'.format(day=str(day)))
+                print('No jobs to download on {day}.'.format(day=str(day)))
 
         else:
             for i, uuid in enumerate(uuids):
@@ -185,12 +195,10 @@ class Miner():
         return path.join(self.directory, filename)
 
     def _job_url(self):
-        """ The url of the web-page for a job. """
         return 'http://bamboo-mec.de/ll_detail.php5?status=delivered&uuid={uuid}&datum={date}'\
             .format(uuid=self.stamp.uuid, date=self.stamp.date.strftime('%d.%m.%Y'))
 
     def _is_cached(self):
-        """ True if that job already has a local file. """
         if isfile(self._filepath()):
             return True
         else:
@@ -203,7 +211,7 @@ class Miner():
             f.write(pretty_html)
 
     def _load_job(self):
-        """ Load a file from cache and return a beautiful soup. """
+        """ Load an html file and return a beautiful soup. """
         with open(self._filepath(), 'r') as f:
             html = f.read()
         return BeautifulSoup(html)
@@ -223,6 +231,8 @@ class Packager():
         :param serial_items: a list of Stamped(Stamp, serial_data) objects
         :return: a Tables(clients, orders, checkpoints, checkins) object
         """
+
+        assert serial_items is not None, 'Argument cannot be None.'
 
         clients = list()
         orders = list()
@@ -446,6 +456,8 @@ class Scraper:
         :param soup_jobs: Stamped(Stamp, BeautifulSoup)
         :return: Stamped(Stamp, (job_details, addresses))
         """
+
+        assert soup_jobs is not None, 'Argument cannot be None.'
 
         serial_jobs = list()
 
